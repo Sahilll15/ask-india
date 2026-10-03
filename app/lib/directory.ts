@@ -258,6 +258,12 @@ export function bestPortal(question: string, answer = ''): Portal {
   return t ? PORTALS[t.portals[0]] : PORTALS.nationalPortal;
 }
 
+/** One national portal per service the question asks about (up to 3), so each part has a known-good link. */
+export function officialPortals(question: string, answer = ''): Portal[] {
+  const keys = [...new Set(topicsIn(question).map((t) => t.portals[0]))].slice(0, 3);
+  return keys.length ? keys.map((k) => PORTALS[k]) : [bestPortal(question, answer)];
+}
+
 /** 1 to 3 portals that match the question's topics, or the national portal when nothing matches. */
 export function portalsFor(question: string, max = 3): Portal[] {
   const topics = topicsIn(question);

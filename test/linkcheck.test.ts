@@ -165,11 +165,11 @@ test('verdicts are cached, deduped in flight and checked with a concurrency cap'
   };
   const cache = memoryCache();
   const urls = Array.from({ length: 10 }, (_, i) => `https://a.gov.in/${i}${i === 3 ? 'dead' : ''}`);
-  const first = await createLinkChecker(cache, check, 3).verifyAll([...urls, urls[0]]);
+  const first = await createLinkChecker(cache, check, { concurrency: 3 }).verifyAll([...urls, urls[0]]);
   assert.equal(calls, 10);
   assert.ok(peak <= 3, `peak ${peak}`);
   assert.equal(first.get(urls[3])!.ok, false);
-  const again = await createLinkChecker(cache, check, 3).verifyAll(urls);
+  const again = await createLinkChecker(cache, check, { concurrency: 3 }).verifyAll(urls);
   assert.equal(calls, 10, 'second request is served from the cache');
   assert.equal(again.get(urls[3])!.ok, false);
   assert.equal(again.get(urls[0])!.ok, true);
@@ -213,4 +213,20 @@ test('best portal follows the topic of the question', () => {
   assert.equal(bestPortal('How do I link my PAN with Aadhaar?').name, 'Income Tax e-filing');
   assert.equal(bestPortal('What should I do?', 'Use the Udyam portal.').name, 'Udyam Registration');
   assert.equal(bestPortal('something unrelated').name, 'National Portal of India');
+});
+
+test('one answer cannot fan out: uncached checks are capped and a deadline bounds the wait', async () => {
+  let calls = 0;
+  const checker = createLinkChecker(memoryCache(), async () => (calls++, { ok: true, reason: 'http 200' }), { maxChecks: 3 });
+  const urls = Array.from({ length: 10 }, (_, i) => `https://b.gov.in/${i}`);
+  const v = await checker.verifyAll(urls);
+  assert.equal(calls, 3);
+  assert.equal([...v.values()].filter((x) => x.ok).length, 3);
+  assert.equal(v.get(urls[9])!.reason, 'link budget');
+
+  const slow = createLinkChecker(memoryCache(), () => new Promise((r) => setTimeout(() => r({ ok: true, reason: 'http 200' }), 200)), { budgetMs: 30 });
+  const started = Date.now();
+  const late = await slow.verifyAll(['https://c.gov.in/']);
+  assert.ok(Date.now() - started < 150);
+  assert.deepEqual(late.get('https://c.gov.in/'), { ok: false, reason: 'deadline' });
 });

@@ -15,6 +15,9 @@ const TIMEOUT_MS = 6000;
 const MAX_REDIRECTS = 5;
 const SNIFF_BYTES = 16_384;
 const CONCURRENCY = 4;
+// Per answer: at most this many uncached outbound checks, and at most this long spent waiting on them.
+export const MAX_CHECKS_PER_ANSWER = 12;
+export const CHECK_BUDGET_MS = 20_000;
 const DAY_S = 24 * 60 * 60;
 // Timeouts, network and TLS errors may be transient or fixed by a new vendored intermediate, so they expire sooner.
 const FLAKY_S = 60 * 60;
@@ -206,8 +209,13 @@ export function redisCache(redis: RedisLike): CacheStore {
 
 export const cacheKeyFor = (url: string) => `linkcheck:${createHash('sha1').update(url).digest('hex')}`;
 
-export function createLinkChecker(cache: CacheStore, check: (url: string) => Promise<Verdict> = (u) => probe(u), concurrency = CONCURRENCY) {
+type CheckerOptions = { concurrency?: number; maxChecks?: number; budgetMs?: number };
+
+export function createLinkChecker(cache: CacheStore, check: (url: string) => Promise<Verdict> = (u) => probe(u), opts: CheckerOptions = {}) {
+  const { concurrency = CONCURRENCY, maxChecks = MAX_CHECKS_PER_ANSWER, budgetMs = CHECK_BUDGET_MS } = opts;
+  let waited = 0;
   const inflight = new Map<string, Promise<Verdict>>();
+  let checks = 0;
   let active = 0;
   const queue: (() => void)[] = [];
   const slot = () => (active < concurrency ? (active++, Promise.resolve()) : new Promise<void>((r) => queue.push(r)));
@@ -222,7 +230,13 @@ export function createLinkChecker(cache: CacheStore, check: (url: string) => Pro
     const key = cacheKeyFor(url);
     const cached = await cache.get(key);
     if (cached) return { ok: cached.startsWith('ok'), reason: `${cached.slice(cached.indexOf(':') + 1)} (cached)` };
+    // Over budget means unverified, never trusted, and is not cached.
+    if (++checks > maxChecks) return { ok: false, reason: 'link budget' };
     await slot();
+    if (waited >= budgetMs) {
+      release();
+      return { ok: false, reason: 'deadline' };
+    }
     try {
       const v = await check(url);
       const flaky = v.reason === 'timeout' || v.reason === 'network error' || v.reason === 'tls error';
@@ -243,11 +257,19 @@ export function createLinkChecker(cache: CacheStore, check: (url: string) => Pro
       }
       return p;
     },
+    /** Verdicts for every URL; any still pending when the answer's wait budget runs out count as failed. */
     async verifyAll(urls: string[]) {
       const out = new Map<string, Verdict>();
-      await Promise.all([...new Set(urls)].map(async (u) => out.set(u, await this.verify(u))));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const started = Date.now();
+      const late = new Promise<void>((r) => (timer = setTimeout(r, Math.max(0, budgetMs - waited))));
+      await Promise.race([Promise.all([...new Set(urls)].map(async (u) => out.set(u, await this.verify(u)))), late]);
+      clearTimeout(timer);
+      waited += Date.now() - started;
+      for (const u of new Set(urls)) if (!out.has(u)) out.set(u, { ok: false, reason: 'deadline' });
       return out;
     },
+    checks: () => checks,
   };
 }
 

@@ -47,11 +47,12 @@ async function ask(q) {
   if (done.kind !== q.expect) fail.push(`kind ${done.kind}, expected ${q.expect}`);
   if (q.expect === 'answer' && done.sources.length < 1) fail.push('no sources');
   if (meta?.lang !== q.lang) fail.push(`detected ${meta?.lang}, expected ${q.lang}`);
+  if (q.topic === 'combined' && (done.portals ?? []).length < 2) fail.push('two-part question without a portal per part');
   const share = devanagari(done.text);
   if (q.lang === 'hi' ? share < 0.4 : share > 0.15) fail.push(`answer language off (devanagari ${share.toFixed(2)})`);
 
   const inline = [...done.text.matchAll(/\]\((https?:[^)\s]+)\)/g)].map((m) => m[1]);
-  const urls = [...new Set([...done.sources.map((s) => s.url), ...(done.portal ? [done.portal.url] : []), ...(done.related ?? []).map((p) => p.url), ...inline])];
+  const urls = [...new Set([...done.sources.map((s) => s.url), ...(done.portals ?? []).map((p) => p.url), ...(done.related ?? []).map((p) => p.url), ...inline])];
   const off = urls.filter((u) => !isOfficialUrl(u));
   if (off.length) fail.push(`non-official: ${off.join(' ')}`);
   const links = await Promise.all(urls.map(async (url) => ({ url, code: await status(url) })));

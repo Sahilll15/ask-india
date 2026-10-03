@@ -31,7 +31,7 @@ type Done = {
   text: string;
   sources: Source[];
   related: Portal[];
-  portal?: Portal | null;
+  portals?: Portal[];
   sourcesFrom?: 'citations' | 'search' | null;
   footer: string;
   cached: boolean;
@@ -497,9 +497,10 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                   </span>
                 </a>
               ))}
-              {d.portal && (
+              {(d.portals ?? []).map((portal) => (
                 <a
-                  href={d.portal.url}
+                  key={portal.url}
+                  href={portal.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group flex items-start gap-3 rounded-2xl border border-dashed border-line-strong bg-card p-3 transition-colors hover:border-brand"
@@ -509,11 +510,11 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[0.7rem] font-semibold uppercase tracking-wide text-ink-faint">Official portal</span>
-                    <span className="line-clamp-2 text-sm font-medium leading-snug text-ink group-hover:text-brand">{d.portal.name}</span>
-                    <span className="mt-0.5 block truncate text-xs text-ink-faint">{shortUrl(d.portal.url)}</span>
+                    <span className="line-clamp-2 text-sm font-medium leading-snug text-ink group-hover:text-brand">{portal.name}</span>
+                    <span className="mt-0.5 block truncate text-xs text-ink-faint">{shortUrl(portal.url)}</span>
                   </span>
                 </a>
-              )}
+              ))}
             </div>
             <p className="mt-4 flex items-start gap-2 rounded-2xl bg-brand-tint px-3 py-2 text-sm text-brand-deep">
               <InfoIcon className="mt-0.5 size-4 shrink-0" />

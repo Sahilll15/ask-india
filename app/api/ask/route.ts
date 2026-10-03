@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import type { ResponseInputItem, ResponseStreamEvent } from 'openai/resources/responses/responses';
 import { applyCitations, DECLINE_TAG, dropOffer, keepVerified, shownUrls, stripStrayLinks, type Annotation, type Source } from '../../lib/citations.ts';
-import { bestPortal, portalsFor, relatedPortals, searchHint, type Portal } from '../../lib/directory.ts';
+import { officialPortals, portalsFor, relatedPortals, searchHint, type Portal } from '../../lib/directory.ts';
 import { cleanUrl, displayDomain, isOfficialUrl, SEARCH_DOMAINS } from '../../lib/domains.ts';
 import { detectLang, FOOTER, NOT_FOUND, type Lang } from '../../lib/lang.ts';
 import { redact, type RemovedKind } from '../../lib/redact.ts';
 import { answerCache, cacheKey, counters } from '../../server/cache.ts';
 import { bad, readJson, upstreamError } from '../../server/http.ts';
 import { linkChecker } from '../../server/linkcheck.ts';
+import { MAX_SEARCHES, retrySearchBudget } from '../../server/search-budget.ts';
 import { estimateCost, openai, TEXT_MODEL } from '../../server/openai.ts';
 import { instructions } from '../../server/prompts.ts';
 import { DAILY_QUESTIONS, LIMITS, LimiterUnavailable, budgetSpent, check, limiterBusy, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
@@ -17,7 +18,6 @@ export const maxDuration = 60;
 const MAX_BODY = 16_000;
 const MAX_QUESTION = 500;
 const MAX_ANSWER_CONTEXT = 2000;
-const MAX_SEARCHES = Math.min(4, Math.max(1, Number(process.env.MAX_SEARCHES) || 2));
 
 const Body = z.object({
   question: z.string().max(MAX_QUESTION),
@@ -35,7 +35,7 @@ type Done = {
   text: string;
   sources: Source[];
   related: Portal[];
-  portal: Portal | null;
+  portals: Portal[];
   footer: string;
   cached: boolean;
   quota: Quota | null;
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
   const hit = key ? answerCache.get(key) : null;
   if (hit) {
     counters.cached++;
-    const done: Done = { t: 'done', kind: 'answer', ...hit, related: [], portal: bestPortal(question, hit.text), cached: true, quota: await quotaOrNull(req) };
+    const done: Done = { t: 'done', kind: 'answer', ...hit, related: [], portals: officialPortals(question, hit.text), cached: true, quota: await quotaOrNull(req) };
     return new Response(new Blob([line({ t: 'meta', removed: [...removed], lang }), line(done)]).stream(), { headers: STREAM_HEADERS });
   }
 
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     ...input.slice(0, -1),
     { role: 'user', content: `${question}\n\nSearch for: ${searchHint(question)}` },
   ];
-  const request = (forced: boolean) =>
+  const request = (forced: boolean, maxSearches = MAX_SEARCHES) =>
     openai().responses.create({
       model: TEXT_MODEL,
       instructions: instructions(lang, new Date().toISOString().slice(0, 10)),
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
       ],
       ...(forced ? { tool_choice: 'required' as const } : {}),
       // Supported by the API but missing from this SDK version's create params type.
-      ...({ max_tool_calls: MAX_SEARCHES } as object),
+      ...({ max_tool_calls: maxSearches } as object),
       include: ['web_search_call.action.sources'],
       reasoning: { effort: 'low' },
       max_output_tokens: 2500,
@@ -205,7 +205,7 @@ export async function POST(req: Request) {
         const sources = pass.searchUrls.filter(ok).slice(0, 4).map((url, i) => searchSource(url, i + 1));
         if (!sources.length) return null;
         sourcesFrom = 'search';
-        return { ...done, kind: 'answer', text: body, sources, related: [], portal: bestPortal(question, body) };
+        return { ...done, kind: 'answer', text: body, sources, related: [], portals: officialPortals(question, body) };
       };
 
       try {
@@ -215,11 +215,13 @@ export async function POST(req: Request) {
         logPass(1, pass);
         let done = await resolve(pass);
 
-        if (!done) {
+        // The retry shares the question's search cap and is not counted as a second question.
+        const retryBudget = retrySearchBudget(pass.searches);
+        if (!done && retryBudget > 0) {
           retried = true;
           send({ t: 'reset' });
           send({ t: 'status', stage: 'searching' });
-          upstream = await request(true);
+          upstream = await request(true, retryBudget);
           pass = await runPass(upstream, send, links);
           searches += pass.searches;
           costUsd += estimateCost(pass.usage, pass.searches);
@@ -353,11 +355,11 @@ function searchSource(url: string, n: number): Source {
 
 function noSource(quota: Quota | null, lang: Lang, question: string): Done {
   counters.noSource++;
-  return { t: 'done', cached: false, quota, footer: FOOTER[lang], portal: null, kind: 'nosource', text: NOT_FOUND[lang], sources: [], related: portalsFor(question) };
+  return { t: 'done', cached: false, quota, footer: FOOTER[lang], portals: [], kind: 'nosource', text: NOT_FOUND[lang], sources: [], related: portalsFor(question) };
 }
 
 function finish(quota: Quota | null, lang: Lang, question: string, text: string, annotations: Annotation[]): Done {
-  const base = { t: 'done' as const, cached: false, quota, footer: FOOTER[lang], related: [] as Portal[], portal: null };
+  const base = { t: 'done' as const, cached: false, quota, footer: FOOTER[lang], related: [] as Portal[], portals: [] };
   if (text.includes(DECLINE_TAG)) {
     counters.declined++;
     const plain = text.replaceAll(DECLINE_TAG, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim();
@@ -366,5 +368,5 @@ function finish(quota: Quota | null, lang: Lang, question: string, text: string,
   const cited = applyCitations(text, annotations);
   if (!cited.sources.length) return { ...base, kind: 'nosource', text: '', sources: [] };
   const answer = dropOffer(cited.text);
-  return { ...base, kind: 'answer', text: answer, sources: cited.sources, portal: bestPortal(question, answer) };
+  return { ...base, kind: 'answer', text: answer, sources: cited.sources, portals: officialPortals(question, answer) };
 }

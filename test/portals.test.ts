@@ -24,3 +24,20 @@ test('fallback copy is softer in all three languages', () => {
   assert.ok(NOT_FOUND.hi.includes('आधिकारिक'));
   assert.match(NOT_FOUND.hinglish, /official portals/);
 });
+
+test('the forced retry stays inside the per-question search cap', async () => {
+  const { retrySearchBudget, QUESTION_SEARCH_CAP, MAX_SEARCHES } = await import('../app/server/search-budget.ts');
+  assert.equal(QUESTION_SEARCH_CAP, MAX_SEARCHES * 2);
+  assert.equal(retrySearchBudget(0, 2), 2);
+  assert.equal(retrySearchBudget(2, 2), 2);
+  assert.equal(retrySearchBudget(3, 2), 1, 'a run that overshot leaves less for the retry');
+  assert.equal(retrySearchBudget(4, 2), 0, 'no retry once the cap is spent');
+  assert.equal(retrySearchBudget(9, 2), 0);
+});
+
+test('a two-service question gets an official portal for each service', async () => {
+  const { officialPortals } = await import('../app/lib/directory.ts');
+  assert.deepEqual(officialPortals('How do I update my Aadhaar card as well as PAN card?').map((p) => p.name), ['myAadhaar', 'Income Tax e-filing']);
+  assert.deepEqual(officialPortals('How do I renew my passport?').map((p) => p.name), ['Passport Seva']);
+  assert.deepEqual(officialPortals('something else').map((p) => p.name), ['National Portal of India']);
+});
