@@ -13,6 +13,8 @@ const mukta = Mukta({
 const fraunces = Fraunces({ subsets: ['latin'], display: 'swap', variable: '--font-fraunces', axes: ['opsz'] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://askindia.online'),
+  alternates: { canonical: '/' },
   title: { default: 'Ask India: answers from official government sites', template: '%s · Ask India' },
   description:
     'An independent Q&A front door to Indian government information. Ask how to get a PAN, update Aadhaar or renew a passport, and get short steps with links to the official pages. Not a government website.',
