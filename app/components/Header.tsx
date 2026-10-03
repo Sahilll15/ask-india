@@ -7,6 +7,7 @@ import { LogoMark, MoonIcon, ShieldIcon, SunIcon } from './Icons.tsx';
 
 const NAV = [
   { href: '/', label: 'Ask' },
+  { href: '/guides', label: 'Guides' },
   { href: '/directory', label: 'Directory' },
   { href: '/about', label: 'About' },
 ];

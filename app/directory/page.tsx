@@ -4,35 +4,75 @@ import { CATEGORIES, FEATURED_PORTALS, PORTALS } from '../lib/directory.ts';
 import { displayDomain } from '../lib/domains.ts';
 import { ArrowRightIcon, CategoryIcon, ExternalIcon } from '../components/Icons.tsx';
 import { Hexagons } from '../components/Hexagons.tsx';
+import { JsonLd } from '../components/JsonLd.tsx';
+import { GUIDES, guideForQuestion } from '../guides/data.ts';
+import { SITE_URL, WEBSITE_ID, breadcrumbs, hasDevanagari, pageMetadata } from '../lib/seo.ts';
 
-const ogImageAlt = 'Ask India answering how to link PAN with Aadhaar with numbered steps and links to official pages';
+const title = 'Indian government services directory: PAN, Aadhaar, passport, GST';
+const description =
+  'Official portals and common questions for PAN, Aadhaar, passport, GST, EPF, voter ID, driving licence and more, with links to incometax.gov.in, uidai.gov.in, passportindia.gov.in and gst.gov.in.';
 
-export const metadata: Metadata = {
-  title: 'Directory',
-  description: 'Topics, common questions and links to official Indian government portals.',
-  alternates: { canonical: '/directory' },
-  openGraph: {
-    type: 'website',
-    siteName: 'Ask India',
-    title: 'Directory · Ask India',
-    description: 'Topics, common questions and links to official Indian government portals.',
-    url: '/directory',
-    locale: 'en_IN',
-    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: ogImageAlt }],
-  },
+export const metadata: Metadata = pageMetadata({ title, description, path: '/directory', absoluteTitle: true });
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'CollectionPage',
+      '@id': `${SITE_URL}/directory#page`,
+      url: `${SITE_URL}/directory`,
+      name: title,
+      description,
+      inLanguage: 'en-IN',
+      isPartOf: { '@id': WEBSITE_ID },
+      mainEntity: {
+        '@type': 'ItemList',
+        name: 'Official Indian government portals',
+        numberOfItems: FEATURED_PORTALS.length,
+        itemListElement: FEATURED_PORTALS.map((k, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          name: PORTALS[k].name,
+          url: PORTALS[k].url,
+        })),
+      },
+    },
+    breadcrumbs([
+      { name: 'Home', path: '/' },
+      { name: 'Directory', path: '/directory' },
+    ]),
+  ],
 };
 
 export default function DirectoryPage() {
   return (
-    <div className="relative">
+    <div className="relative overflow-x-clip">
       <Hexagons className="pointer-events-none absolute -right-24 -top-10 w-[460px] max-w-none opacity-80" />
       <div className="relative mx-auto max-w-6xl px-4 pt-10 sm:px-6 sm:pt-14">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">Directory · निर्देशिका</p>
+        <JsonLd data={jsonLd} />
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
+          Directory · <span lang="hi">निर्देशिका</span>
+        </p>
         <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">Where to start</h1>
         <p className="mt-3 max-w-2xl text-lg text-ink-soft">
           Pick a topic to ask a common question, or go straight to the official portal. Every link below points to a gov.in or nic.in site and was
           checked to load.
         </p>
+
+        <section aria-labelledby="guides" className="mt-6 rounded-3xl border border-line bg-card p-5 shadow-card">
+          <h2 id="guides" className="font-semibold">
+            Step-by-step guides
+          </h2>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {GUIDES.map((g) => (
+              <li key={g.slug}>
+                <Link href={`/guides/${g.slug}`} className="inline-block rounded-full bg-page px-3 py-1.5 text-sm text-ink-soft transition-colors hover:text-brand">
+                  {g.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         <nav aria-label="Topics" className="mt-6 flex flex-wrap gap-2">
           {CATEGORIES.map((c) => (
@@ -59,17 +99,28 @@ export default function DirectoryPage() {
                 </div>
               </div>
               <ul className="mt-4 space-y-1">
-                {c.questions.map((q) => (
-                  <li key={q}>
-                    <Link
-                      href={`/?q=${encodeURIComponent(q)}`}
-                      className="group flex items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-ink transition-colors hover:bg-brand-tint hover:text-brand-deep"
-                    >
-                      {q}
-                      <ArrowRightIcon className="size-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
-                    </Link>
-                  </li>
-                ))}
+                {c.questions.map((q) => {
+                  const guide = guideForQuestion(q);
+                  return (
+                    <li key={q}>
+                      <Link
+                        href={guide ? `/guides/${guide.slug}` : `/?q=${encodeURIComponent(q)}`}
+                        lang={hasDevanagari(q) ? 'hi' : undefined}
+                        className="group flex items-center justify-between gap-3 rounded-xl px-2 py-1.5 text-ink transition-colors hover:bg-brand-tint hover:text-brand-deep"
+                      >
+                        <span>
+                          {q}
+                          {guide && (
+                            <span lang="en" className="ml-2 rounded-full bg-brand-tint px-2 py-0.5 text-xs font-medium text-brand-deep">
+                              Guide
+                            </span>
+                          )}
+                        </span>
+                        <ArrowRightIcon className="size-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
               <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
                 {c.portals.map((k) => (
