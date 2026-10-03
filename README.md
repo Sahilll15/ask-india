@@ -21,6 +21,20 @@ It is for people who know what they need to do but not where on which portal. It
 
 Measured locally with `gpt-5.4-mini`: about 6 to 9 seconds per answer, first text after 4 to 8 seconds (search time), and about $0.015 to $0.037 per question, mostly the $0.01 per search call. Declines cost about $0.001. Cached answers are free.
 
+## Architecture
+
+![Ask India architecture: the browser redacts personal data and sends questions to Next.js routes in the Mumbai Vercel region, which count them in Upstash Redis, ask OpenAI with web search limited to gov.in and nic.in, and open every cited link before showing it](docs/architecture.svg)
+
+1. The browser removes ID, phone, bank and card numbers and sends the question to `POST /api/ask`.
+2. The route redacts again and serves a cached answer if the same question was answered in the last 12 hours. Otherwise it counts the question and the daily budget in Upstash Redis.
+3. OpenAI answers with web search limited to gov.in and nic.in, and the route keeps only citations on official hosts.
+4. Every cited link is opened on the server and dropped if it is dead, a "not found" page or off the allow-list. Verdicts are cached in Redis for a day.
+5. Text streams back as NDJSON. Verified sources, renumbered markers and official portal cards arrive with the finished answer.
+6. `GET /api/ask` reads the quota from Redis without counting, for the "questions left this hour" line.
+7. Voice questions go through `POST /api/transcribe`, which is also counted in Redis, and gpt-4o-mini-transcribe. The text is redacted before it reaches the composer.
+
+Why it is built this way: the key never reaches the browser and personal numbers are removed twice. Citations are checked in code and every link is opened before it is shown, so a dead or unofficial page never appears as a source. Limits are counted in Redis before the paid call, and functions run in Mumbai, close to the government sites and the database.
+
 ## Run it
 
 ```bash
