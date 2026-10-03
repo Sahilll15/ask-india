@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { streamingView, type Source } from '../lib/citations.ts';
 import { CATEGORIES, SAMPLES, type Portal } from '../lib/directory.ts';
 import { redact, removedNotice, type RemovedKind } from '../lib/redact.ts';
+import { hasDevanagari } from '../lib/seo.ts';
 import { Hexagons } from './Hexagons.tsx';
 import {
   ArrowRightIcon,
@@ -67,7 +68,6 @@ export function AskApp() {
   const { quota, setQuota, spent, now } = useQuota();
   const abortRef = useRef<AbortController | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
-  const autoAsked = useRef(false);
 
   const patch = useCallback((id: string, fn: (t: Turn) => Partial<Turn>) => {
     setTurns((prev) => prev.map((t) => (t.id === id ? { ...t, ...fn(t) } : t)));
@@ -157,19 +157,15 @@ export function AskApp() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // ?q= only prefills: a crawler or link preview must never spend a paid question.
   useEffect(() => {
-    if (autoAsked.current || !quota) return;
     const q = new URLSearchParams(window.location.search).get('q');
     if (!q) return;
-    autoAsked.current = true;
     window.history.replaceState(null, '', '/');
-    if (spent) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time prefill from a directory link
-      setInput(q.slice(0, MAX_LEN));
-      return;
-    }
-    void ask(q);
-  }, [quota, spent, ask]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time prefill from a guide or directory link
+    setInput(q.slice(0, MAX_LEN));
+    textRef.current?.focus();
+  }, []);
 
   const lastId = turns.at(-1)?.id;
   useEffect(() => {
@@ -291,7 +287,7 @@ export function AskApp() {
                     ? 'recording border-brand bg-brand text-brand-ink'
                     : 'border-line text-ink-soft hover:border-brand hover:text-brand'
                 }`}
-                aria-label={recorder.state === 'recording' ? 'Stop recording' : 'Ask by voice, up to 30 seconds'}
+                aria-label={recorder.state === 'recording' ? 'Stop recording' : 'Speak your question, up to 30 seconds'}
               >
                 {recorder.state === 'recording' ? <StopIcon className="size-4" /> : <MicIcon className="size-4" />}
                 <span className="tabular-nums">
@@ -419,6 +415,7 @@ function Chip({ text, onClick, disabled }: { text: string; onClick: () => void; 
       type="button"
       disabled={disabled}
       onClick={onClick}
+      lang={hasDevanagari(text) ? 'hi' : undefined}
       className="rounded-full border border-line-strong bg-card px-4 py-2 text-sm text-ink transition-all hover:-translate-y-0.5 hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:border-line-strong disabled:hover:text-ink"
     >
       {text}
