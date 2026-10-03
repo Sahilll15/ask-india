@@ -32,6 +32,7 @@ type Done = {
   sources: Source[];
   related: Portal[];
   portal?: Portal | null;
+  sourcesFrom?: 'citations' | 'search' | null;
   footer: string;
   cached: boolean;
   quota: { limit: number; remaining: number; resetAt: number | null } | null;
@@ -129,6 +130,7 @@ export function AskApp() {
             const ev = JSON.parse(lineText);
             if (ev.t === 'meta') patch(id, (t) => ({ removed: [...new Set([...t.removed, ...(ev.removed ?? [])])] }));
             else if (ev.t === 'status') patch(id, (t) => ({ stage: ev.stage, domains: ev.domains ?? t.domains }));
+            else if (ev.t === 'reset') patch(id, () => ({ stage: 'searching', text: '', domains: [] }));
             else if (ev.t === 'delta') patch(id, (t) => ({ stage: 'writing', text: t.text + ev.text }));
             else if (ev.t === 'done') {
               finished = true;
@@ -474,7 +476,8 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
         {d?.kind === 'answer' && (
           <>
             <Markdown text={d.text} anchor={anchor} />
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            {d.sourcesFrom === 'search' && <p className="mb-2 mt-5 text-sm font-semibold text-ink-soft">Sources</p>}
+            <div className={`${d.sourcesFrom === 'search' ? '' : 'mt-5 '}grid gap-2 sm:grid-cols-2`}>
               {d.sources.map((s) => (
                 <a
                   key={s.n}
@@ -524,10 +527,8 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
             <p className={`text-lg ${d.kind === 'nosource' ? 'font-semibold text-ink' : 'text-ink'}`}>{d.text}</p>
             {d.related.length > 0 && (
               <>
-                <p className="mb-2 mt-4 text-sm text-ink-soft">
-                  {d.kind === 'nosource' ? 'These official directories may help:' : 'Official places for procedures:'}
-                </p>
-                <ul className="grid gap-2 sm:grid-cols-3">
+                {d.kind === 'decline' && <p className="mb-2 mt-4 text-sm text-ink-soft">Official places for procedures:</p>}
+                <ul className={`grid gap-2 sm:grid-cols-3 ${d.kind === 'nosource' ? 'mt-3' : ''}`}>
                   {d.related.map((p) => (
                     <li key={p.url}>
                       <a
@@ -543,6 +544,11 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                   ))}
                 </ul>
               </>
+            )}
+            {d.kind === 'nosource' && canRetry && (
+              <button type="button" onClick={onRetry} className="mt-4 rounded-full border border-line-strong px-4 py-1.5 text-sm font-medium hover:border-brand hover:text-brand">
+                Try again
+              </button>
             )}
           </div>
         )}

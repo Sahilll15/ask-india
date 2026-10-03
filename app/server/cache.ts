@@ -1,7 +1,7 @@
 import type { Source } from '../lib/citations.ts';
 import type { Lang } from '../lib/lang.ts';
 
-export type CachedAnswer = { text: string; sources: Source[]; lang: Lang; footer: string };
+export type CachedAnswer = { text: string; sources: Source[]; lang: Lang; footer: string; sourcesFrom?: 'citations' | 'search' | null };
 
 const TTL_MS = 12 * 60 * 60 * 1000;
 

@@ -33,7 +33,7 @@ export const FOOTER: Record<Lang, string> = {
 };
 
 export const NOT_FOUND: Record<Lang, string> = {
-  en: 'I could not find this on an official site.',
-  hi: 'मुझे यह जानकारी किसी आधिकारिक साइट पर नहीं मिली।',
-  hinglish: 'Mujhe yeh kisi official site par nahi mila.',
+  en: "I couldn't confirm the exact steps on an official page just now. These official portals handle it:",
+  hi: 'मैं अभी किसी आधिकारिक पेज पर सटीक प्रक्रिया की पुष्टि नहीं कर सका। ये आधिकारिक पोर्टल इसे संभालते हैं:',
+  hinglish: 'Main abhi kisi official page par exact steps confirm nahi kar paya. Yeh official portals isse handle karte hain:',
 };

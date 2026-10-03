@@ -220,38 +220,55 @@ export const SAMPLES = [
   'Lost phone ko Sanchar Saathi par block kaise karein?',
 ];
 
-// Topic to the one national portal for it. Order breaks ties: earlier topics win.
-const TOPICS: { re: RegExp; portal: keyof typeof PORTALS }[] = [
-  { re: /\b(aadhaa?r|uidai)\b|आधार/i, portal: 'myAadhaar' },
-  { re: /\b(pan|itr|income[- ]tax|tds|refund|e-?filing)\b|पैन|आयकर/i, portal: 'incomeTax' },
-  { re: /\bpassport\b|पासपोर्ट/i, portal: 'passport' },
-  { re: /\bgst(in)?\b|जीएसटी/i, portal: 'gst' },
-  { re: /\b(driving|licen[cs]e|learner'?s?|\bdl)\b|लाइसेंस|ड्राइविंग/i, portal: 'sarathi' },
-  { re: /\b(vehicle|rc|registration certificate|challan|number plate|fastag)\b|वाहन/i, portal: 'parivahan' },
-  { re: /\b(ayushman|pm-?jay|golden card)\b|आयुष्मान/i, portal: 'ayushman' },
-  { re: /\babha\b|आभा/i, portal: 'abha' },
-  { re: /\b(epfo?|uan|provident fund|pf)\b/i, portal: 'epfo' },
-  { re: /\b(udyam|msme)\b/i, portal: 'udyam' },
-  { re: /\b(voter|epic|electoral roll)\b|मतदाता/i, portal: 'voters' },
-  { re: /\bdigilocker\b|डिजिलॉकर/i, portal: 'digilocker' },
-  { re: /\b(lost|stolen|chori)\b.*\b(phone|mobile)\b|\b(sim|imei|sanchar)\b|मोबाइल/i, portal: 'sancharSaathi' },
-  { re: /\bkisan\b|किसान/i, portal: 'pmKisan' },
-  { re: /\bscholarships?\b|छात्रवृत्ति/i, portal: 'scholarships' },
-  { re: /\boci\b/i, portal: 'oci' },
-  { re: /\b(e-?shram)\b/i, portal: 'eshram' },
-  { re: /\b(cyber|online fraud|scam)\b/i, portal: 'cybercrime' },
-  { re: /\bconsumer\b|उपभोक्ता/i, portal: 'consumer' },
-  { re: /\b(grievance|cpgrams)\b|शिकायत/i, portal: 'cpgrams' },
+// Topic to its national portals (best first) and plain search terms. Order breaks ties.
+const TOPICS: { re: RegExp; portals: (keyof typeof PORTALS)[]; hint: string }[] = [
+  { re: /\b(aadhaa?r|uidai)\b|आधार/i, portals: ['myAadhaar', 'uidai'], hint: 'Aadhaar update myaadhaar.uidai.gov.in uidai.gov.in' },
+  { re: /\b(pan|itr|income[- ]tax|tds|refund|e-?filing)\b|पैन|आयकर/i, portals: ['incomeTax'], hint: 'PAN income tax incometax.gov.in' },
+  { re: /\bpassport\b|पासपोर्ट/i, portals: ['passport'], hint: 'passport passportindia.gov.in' },
+  { re: /\bgst(in)?\b|जीएसटी/i, portals: ['gst'], hint: 'GST registration gst.gov.in' },
+  { re: /\b(driving|licen[cs]e|learner'?s?|dl)\b|लाइसेंस|ड्राइविंग/i, portals: ['sarathi', 'parivahan'], hint: 'driving licence sarathi.parivahan.gov.in' },
+  { re: /\b(vehicle|rc|registration certificate|challan|number plate|fastag)\b|वाहन/i, portals: ['parivahan'], hint: 'vehicle parivahan.gov.in' },
+  { re: /\b(ayushman|pm-?jay|golden card)\b|आयुष्मान/i, portals: ['ayushman', 'abha'], hint: 'Ayushman card PM-JAY beneficiary.nha.gov.in' },
+  { re: /\babha\b|आभा/i, portals: ['abha'], hint: 'ABHA abha.abdm.gov.in' },
+  { re: /\b(epfo?|uan|provident fund|pf)\b/i, portals: ['epfo'], hint: 'EPF UAN epfo.gov.in' },
+  { re: /\b(udyam|msme)\b/i, portals: ['udyam'], hint: 'Udyam registration udyamregistration.gov.in' },
+  { re: /\b(voter|epic|electoral roll)\b|मतदाता/i, portals: ['voters', 'eci'], hint: 'voter ID voters.eci.gov.in' },
+  { re: /\bdigilocker\b|डिजिलॉकर/i, portals: ['digilocker'], hint: 'DigiLocker digilocker.gov.in' },
+  { re: /\b(lost|stolen|chori)\b.*\b(phone|mobile)\b|\b(sim|imei|sanchar)\b|मोबाइल/i, portals: ['sancharSaathi', 'ceir'], hint: 'block lost phone sancharsaathi.gov.in' },
+  { re: /\bkisan\b|किसान/i, portals: ['pmKisan'], hint: 'PM-KISAN pmkisan.gov.in' },
+  { re: /\bscholarships?\b|छात्रवृत्ति/i, portals: ['scholarships'], hint: 'National Scholarship Portal scholarships.gov.in' },
+  { re: /\boci\b/i, portals: ['oci'], hint: 'OCI card ociservices.gov.in' },
+  { re: /\b(e-?shram)\b/i, portals: ['eshram'], hint: 'e-Shram eshram.gov.in' },
+  { re: /\b(cyber|online fraud|scam)\b/i, portals: ['cybercrime'], hint: 'report cyber crime cybercrime.gov.in' },
+  { re: /\bconsumer\b|उपभोक्ता/i, portals: ['consumer'], hint: 'consumer complaint consumerhelpline.gov.in' },
+  { re: /\b(grievance|cpgrams)\b|शिकायत/i, portals: ['cpgrams'], hint: 'grievance pgportal.gov.in' },
 ];
+
+/** Topics found in the text, earliest mention first. */
+function topicsIn(text: string) {
+  return TOPICS.map((t, i) => ({ t, at: text.match(t.re)?.index ?? -1, i }))
+    .filter((m) => m.at >= 0)
+    .sort((a, b) => a.at - b.at || a.i - b.i)
+    .map((m) => m.t);
+}
 
 /** The single best national portal for a question, matched on the question first and the answer second. */
 export function bestPortal(question: string, answer = ''): Portal {
-  const score = (text: string, weight: number) =>
-    TOPICS.map((t, i) => {
-      const m = text.match(t.re);
-      return { portal: t.portal, rank: m ? weight * 1000 - (m.index ?? 0) - i / 100 : -Infinity };
-    });
-  const all = [...score(question, 2), ...score(answer, 1)].filter((s) => s.rank > -Infinity).sort((a, b) => b.rank - a.rank);
-  if (all.length) return PORTALS[all[0].portal];
-  return relatedPortals(question, 1)[0] ?? PORTALS.nationalPortal;
+  const t = topicsIn(question)[0] ?? topicsIn(answer)[0];
+  return t ? PORTALS[t.portals[0]] : PORTALS.nationalPortal;
+}
+
+/** 1 to 3 portals that match the question's topics, or the national portal when nothing matches. */
+export function portalsFor(question: string, max = 3): Portal[] {
+  const topics = topicsIn(question);
+  if (!topics.length) return [PORTALS.nationalPortal];
+  // Lead with the top portal of every topic so a two-part question gets both, then fill with the rest.
+  const keys = [...new Set([...topics.map((t) => t.portals[0]), ...topics.flatMap((t) => t.portals)])];
+  return keys.slice(0, max).map((k) => PORTALS[k]);
+}
+
+/** Search-friendly terms for a retry: the topic words and the national portal host. */
+export function searchHint(question: string) {
+  const topics = topicsIn(question);
+  return topics.length ? topics.map((t) => t.hint).join('; ') : 'official procedure india.gov.in';
 }
