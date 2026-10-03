@@ -1,11 +1,12 @@
 import { toFile } from 'openai';
 import { detectLang } from '../../lib/lang.ts';
+import { audioDurationSeconds } from '../../lib/audio-duration.ts';
 import { redact } from '../../lib/redact.ts';
 import { bad, readCapped, upstreamError } from '../../server/http.ts';
 import { openai, TRANSCRIBE_MODEL } from '../../server/openai.ts';
 import { check, tooMany } from '../../server/ratelimit.ts';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 // 30 seconds of opus or AAC is well under this; anything bigger is not a 30 second clip.
 const MAX_AUDIO = 1_000_000;
@@ -19,6 +20,11 @@ export async function POST(req: Request) {
   const read = await readCapped(req, MAX_AUDIO);
   if (!read.ok) return read.reason === 'too_large' ? bad('Recordings are capped at 30 seconds.', 413) : bad('Could not read the recording.');
   if (read.bytes.byteLength < 1000) return bad('The recording is empty. Hold the mic and speak.');
+
+  // Billing follows audio length, and a low bitrate fits minutes into 1MB, so bound the length too.
+  const seconds = audioDurationSeconds(read.bytes);
+  if (seconds === null) return bad('Could not read the length of this recording. Try again.', 415);
+  if (seconds > 35) return bad('Recordings are capped at 30 seconds.', 413);
 
   const gate = check(req, 'transcribe');
   if (!gate.ok) return tooMany(gate.retryAfter, 'voice questions');

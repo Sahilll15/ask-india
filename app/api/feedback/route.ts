@@ -2,6 +2,9 @@ import { counters } from '../../server/cache.ts';
 import { bad, readJson } from '../../server/http.ts';
 import { check, tooMany } from '../../server/ratelimit.ts';
 
+// Same config as the other API routes so Vercel bundles them into one function and they share limiter memory.
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   const read = await readJson(req, 256);
   if (!read.ok) return read.res;
