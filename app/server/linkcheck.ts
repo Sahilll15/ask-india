@@ -1,8 +1,11 @@
-import { constants, createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { request as httpRequest } from 'node:http';
-import { Readable } from 'node:stream';
-import { hostOf, isOfficialUrl } from '../lib/domains.ts';
+import { BlockList, isIP } from 'node:net';
+import { rootCertificates } from 'node:tls';
+import { isOfficialUrl } from '../lib/domains.ts';
+import { EXTRA_INTERMEDIATES } from './certs.ts';
 import { redisFromEnv, type RedisLike } from './redis-limit.ts';
 
 export type Verdict = { ok: boolean; reason: string };
@@ -13,7 +16,7 @@ const MAX_REDIRECTS = 5;
 const SNIFF_BYTES = 16_384;
 const CONCURRENCY = 4;
 const DAY_S = 24 * 60 * 60;
-// Timeouts and network errors are often transient, so they are retried sooner.
+// Timeouts, network and TLS errors may be transient or fixed by a new vendored intermediate, so they expire sooner.
 const FLAKY_S = 60 * 60;
 
 const NOT_FOUND_TITLE = /\b404\b|not\s+found|page\s+(does\s+not|doesn'?t)\s+exist|no\s+longer\s+available|error\s+page/i;
@@ -31,104 +34,127 @@ export function isSoft404(html: string) {
   return NOT_FOUND_BODY.test(text);
 }
 
-async function readHead(res: Response, max: number) {
-  if (!res.body) return '';
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (size < max) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      size += value.byteLength;
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-  return new TextDecoder('utf-8', { fatal: false }).decode(Buffer.concat(chunks).subarray(0, max));
+// Loopback, private, link-local (cloud metadata), CGNAT, multicast and unspecified ranges.
+const BLOCKED = new BlockList();
+for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]] as const) {
+  BLOCKED.addSubnet(net, bits, 'ipv4');
+}
+for (const [net, bits] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8], ['64:ff9b::', 96]] as const) {
+  BLOCKED.addSubnet(net, bits, 'ipv6');
 }
 
-const TLS_CHAIN = /UNABLE_TO_VERIFY_LEAF_SIGNATURE|UNABLE_TO_GET_ISSUER_CERT|UNSAFE_LEGACY_RENEGOTIATION|SELF_SIGNED_CERT_IN_CHAIN/;
-
-// Browsers fetch missing intermediate certificates and some gov.in hosts rely on that,
-// so a TLS chain error is retried without chain checks. Only allow-listed hosts reach here.
-const lenientFetch: typeof fetch = (input, init) =>
-  new Promise((resolve, reject) => {
-    const u = new URL(String(input));
-    const req = (u.protocol === 'http:' ? httpRequest : httpsRequest)(
-      u,
-      {
-        method: 'GET',
-        headers: init?.headers as Record<string, string>,
-        signal: init?.signal ?? undefined,
-        rejectUnauthorized: false,
-        secureOptions: constants.SSL_OP_LEGACY_SERVER_CONNECT,
-      },
-      (res) => {
-        const headers = new Headers();
-        for (const [k, v] of Object.entries(res.headers)) for (const item of [v ?? []].flat()) headers.append(k, String(item));
-        const status = res.statusCode ?? 0;
-        const body = status >= 200 && status !== 204 && status !== 304 ? (Readable.toWeb(res) as ReadableStream) : (res.resume(), null);
-        resolve(new Response(body, { status: status < 200 || status > 599 ? 599 : status, headers }));
-      },
-    );
-    req.on('error', reject);
-    req.end();
-  });
-
-/** GETs the URL like a browser, following up to 5 redirects that must stay on official hosts. */
-export async function probe(url: string, fetchImpl: typeof fetch = fetch, timeoutMs = TIMEOUT_MS): Promise<Verdict> {
-  const first = await probeWith(url, fetchImpl, timeoutMs);
-  return first.reason === 'tls chain' && fetchImpl === fetch ? probeWith(url, lenientFetch, timeoutMs) : first;
+/** True for any address a server-side fetch must never reach. */
+export function isBlockedIp(ip: string) {
+  const mapped = ip.toLowerCase().match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  const addr = mapped ? mapped[1] : ip;
+  const family = isIP(addr);
+  if (!family) return true;
+  return BLOCKED.check(addr, family === 4 ? 'ipv4' : 'ipv6');
 }
 
-async function probeWith(url: string, fetchImpl: typeof fetch, timeoutMs: number): Promise<Verdict> {
-  if (!isOfficialUrl(url)) return { ok: false, reason: 'not official' };
+export type Resolved = { address: string; family: 4 | 6 };
+export type Hop = { status: number; headers: IncomingHttpHeaders; body: string };
+export type ProbeDeps = {
+  resolve(host: string): Promise<Resolved[]>;
+  /** One request to `url`, connected to exactly `ip`, reading at most `maxBytes` of the body. */
+  get(url: URL, ip: Resolved, signal: AbortSignal, maxBytes: number): Promise<Hop>;
+};
+
+// TLS stays verified. The extra intermediates only complete chains that sites forget to send.
+export const TLS_OPTIONS: { rejectUnauthorized: true; ca: string[] } = { rejectUnauthorized: true, ca: [...rootCertificates, ...EXTRA_INTERMEDIATES] };
+
+const HEADERS = {
+  'user-agent': UA,
+  accept: 'text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8',
+  'accept-language': 'en-IN,en;q=0.9',
+};
+
+const nodeDeps: ProbeDeps = {
+  async resolve(host) {
+    return (await lookup(host, { all: true, verbatim: true })) as Resolved[];
+  },
+  get(url, ip, signal, maxBytes) {
+    return new Promise((resolve, reject) => {
+      const secure = url.protocol === 'https:';
+      const req = (secure ? httpsRequest : httpRequest)(
+        url,
+        {
+          method: 'GET',
+          headers: HEADERS,
+          signal,
+          agent: false,
+          // Connect to the address that was checked, so DNS cannot change between check and connect.
+          lookup: (_h, opts, cb) => ((opts as { all?: boolean }).all ? cb(null, [ip] as never) : cb(null, ip.address, ip.family)),
+          ...(secure ? { ...TLS_OPTIONS, servername: url.hostname } : {}),
+        },
+        (res) => {
+          const status = res.statusCode ?? 0;
+          if (status < 200 || status >= 300) {
+            res.destroy();
+            return resolve({ status, headers: res.headers, body: '' });
+          }
+          const chunks: Buffer[] = [];
+          let size = 0;
+          const finish = () => resolve({ status, headers: res.headers, body: Buffer.concat(chunks).subarray(0, maxBytes).toString('utf8') });
+          res.on('data', (c: Buffer) => {
+            chunks.push(c);
+            size += c.length;
+            if (size >= maxBytes) {
+              res.destroy();
+              finish();
+            }
+          });
+          res.on('end', finish);
+          res.on('error', () => finish());
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+  },
+};
+
+const TLS_ERROR = /CERT|SSL|TLS|EPROTO|UNABLE_TO|SELF_SIGNED|RENEGOTIATION/;
+
+/**
+ * GETs a cited URL like a browser would, guarding against SSRF: https on default ports only (http only
+ * as an immediate redirect to https), allow-listed hosts, public IPs checked and pinned on every hop.
+ */
+export async function probe(url: string, deps: ProbeDeps = nodeDeps, timeoutMs = TIMEOUT_MS): Promise<Verdict> {
   const signal = AbortSignal.timeout(timeoutMs);
-  const cookies = new Map<string, string>();
-  let current = url;
+  let current: URL;
+  try {
+    current = new URL(url);
+  } catch {
+    return { ok: false, reason: 'bad url' };
+  }
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      const res = await fetchImpl(current, {
-        redirect: 'manual',
-        signal,
-        headers: {
-          'user-agent': UA,
-          accept: 'text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8',
-          'accept-language': 'en-IN,en;q=0.9',
-          ...(cookies.size ? { cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join('; ') } : {}),
-        },
-      });
-      for (const c of res.headers.getSetCookie?.() ?? []) {
-        const [pair] = c.split(';');
-        const eq = pair.indexOf('=');
-        if (eq > 0) cookies.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
-      }
-      if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-        await res.body?.cancel().catch(() => {});
-        current = new URL(res.headers.get('location')!, current).toString();
-        if (!isOfficialUrl(current)) return { ok: false, reason: `redirect to ${hostOf(current) ?? 'unknown host'}` };
+      if (!isOfficialUrl(current.toString())) return { ok: false, reason: hop ? 'redirect off allow-list' : 'not official' };
+      if (current.protocol !== 'https:' && current.protocol !== 'http:') return { ok: false, reason: 'bad scheme' };
+      if (current.port !== '' || current.username || current.password) return { ok: false, reason: 'non-default port or credentials' };
+      const addrs = await deps.resolve(current.hostname);
+      if (!addrs.length || addrs.some((a) => isBlockedIp(a.address))) return { ok: false, reason: 'blocked address' };
+      const res = await deps.get(current, addrs[0], signal, SNIFF_BYTES);
+      const location = res.headers.location;
+      if (res.status >= 300 && res.status < 400 && location) {
+        const next = new URL(String(location), current);
+        if (current.protocol === 'http:' && next.protocol !== 'https:') return { ok: false, reason: 'insecure http' };
+        current = next;
         continue;
       }
-      if (res.status < 200 || res.status >= 300) {
-        await res.body?.cancel().catch(() => {});
-        return { ok: false, reason: `http ${res.status}` };
-      }
-      const type = res.headers.get('content-type') ?? '';
-      if (!/html|text\/plain/i.test(type)) {
-        await res.body?.cancel().catch(() => {});
-        return { ok: true, reason: `http ${res.status}` };
-      }
-      const head = await readHead(res, SNIFF_BYTES);
-      return isSoft404(head) ? { ok: false, reason: 'soft 404' } : { ok: true, reason: `http ${res.status}` };
+      if (current.protocol === 'http:') return { ok: false, reason: 'insecure http' };
+      if (res.status < 200 || res.status >= 300) return { ok: false, reason: `http ${res.status}` };
+      const type = String(res.headers['content-type'] ?? '');
+      if (!/html|text\/plain/i.test(type)) return { ok: true, reason: `http ${res.status}` };
+      return isSoft404(res.body) ? { ok: false, reason: 'soft 404' } : { ok: true, reason: `http ${res.status}` };
     }
     return { ok: false, reason: 'too many redirects' };
   } catch (err) {
     const name = (err as Error)?.name;
-    if (name === 'TimeoutError' || name === 'AbortError') return { ok: false, reason: 'timeout' };
-    const code = String((err as { cause?: { code?: string } })?.cause?.code ?? (err as { code?: string })?.code ?? '');
-    return { ok: false, reason: TLS_CHAIN.test(code) ? 'tls chain' : 'network error' };
+    if (signal.aborted || name === 'TimeoutError' || name === 'AbortError') return { ok: false, reason: 'timeout' };
+    const code = String((err as { code?: string })?.code ?? '');
+    return { ok: false, reason: TLS_ERROR.test(code) ? 'tls error' : 'network error' };
   }
 }
 
@@ -199,7 +225,7 @@ export function createLinkChecker(cache: CacheStore, check: (url: string) => Pro
     await slot();
     try {
       const v = await check(url);
-      const flaky = v.reason === 'timeout' || v.reason === 'network error';
+      const flaky = v.reason === 'timeout' || v.reason === 'network error' || v.reason === 'tls error';
       await cache.set(key, `${v.ok ? 'ok' : 'bad'}:${v.reason}`, flaky ? FLAKY_S : DAY_S);
       return v;
     } finally {

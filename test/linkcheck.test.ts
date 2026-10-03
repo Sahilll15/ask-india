@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { keepVerified, shownUrls } from '../app/lib/citations.ts';
 import { bestPortal } from '../app/lib/directory.ts';
 import { isOfficialUrl, isPreviewHost } from '../app/lib/domains.ts';
-import { cacheKeyFor, createLinkChecker, isSoft404, LINKCHECK_SCRIPTS, memoryCache, probe, redisCache } from '../app/server/linkcheck.ts';
+import { cacheKeyFor, createLinkChecker, isBlockedIp, isSoft404, LINKCHECK_SCRIPTS, memoryCache, probe, redisCache, TLS_OPTIONS, type ProbeDeps } from '../app/server/linkcheck.ts';
 import type { RedisLike } from '../app/server/redis-limit.ts';
 
 const src = (n: number, url: string) => ({ n, url, title: `T${n}`, domain: new URL(url).hostname });
@@ -48,40 +48,107 @@ test('staging, test, uat, dev, demo and beta hosts are not official', () => {
   for (const h of ['sarathi.parivahan.gov.in', 'services.ecourts.gov.in', 'testmyaadhaar.gov.in', 'devanagari.gov.in']) assert.ok(!isPreviewHost(h), h);
 });
 
-const page = (status: number, body = '', headers: Record<string, string> = {}) =>
-  new Response(status === 204 || status === 304 ? null : body, { status, headers: { 'content-type': 'text/html', ...headers } });
+type Route = { status: number; body?: string; headers?: Record<string, string> };
 
-test('probe follows redirects on official hosts and refuses ones that leave them', async () => {
-  const routes: Record<string, Response | (() => Response)> = {
-    'https://uidai.gov.in/old': () => page(301, '', { location: '/new' }),
-    'https://uidai.gov.in/new': () => page(200, '<title>Update address</title>'),
-    'https://gst.gov.in/away': () => page(302, '', { location: 'https://evil.example.com/' }),
-    'https://gst.gov.in/gone': () => page(404, 'nope'),
-    'https://gst.gov.in/soft': () => page(200, '<title>Page not found</title>'),
-    'https://gst.gov.in/pdf': () => page(200, '%PDF-1.4', { 'content-type': 'application/pdf' }),
+/** Fake DNS and transport: hosts map to IPs, URLs map to responses, and every connect is recorded. */
+function fakeNet(dns: Record<string, string>, routes: Record<string, Route | 'hang' | 'tls'>) {
+  const connects: string[] = [];
+  const deps: ProbeDeps = {
+    async resolve(host) {
+      const ip = dns[host];
+      if (!ip) throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+      return [{ address: ip, family: ip.includes(':') ? 6 : 4 }];
+    },
+    get(url, ip, signal) {
+      connects.push(`${url.href} @ ${ip.address}`);
+      const r = routes[url.href];
+      if (r === 'hang') {
+        return new Promise((_res, reject) => {
+          const keep = setTimeout(() => {}, 5000);
+          signal.addEventListener('abort', () => (clearTimeout(keep), reject(signal.reason)));
+        });
+      }
+      if (r === 'tls') return Promise.reject(Object.assign(new Error('unable to verify'), { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' }));
+      if (!r) return Promise.resolve({ status: 404, headers: {}, body: '' });
+      return Promise.resolve({ status: r.status, headers: { 'content-type': 'text/html', ...r.headers }, body: r.body ?? '' });
+    },
   };
-  const fake = (async (u: string | URL | Request) => {
-    const r = routes[String(u)];
-    if (!r) throw Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } });
-    return typeof r === 'function' ? r() : r;
-  }) as typeof fetch;
-  assert.deepEqual(await probe('https://uidai.gov.in/old', fake), { ok: true, reason: 'http 200' });
-  assert.equal((await probe('https://gst.gov.in/away', fake)).ok, false);
-  assert.deepEqual(await probe('https://gst.gov.in/gone', fake), { ok: false, reason: 'http 404' });
-  assert.deepEqual(await probe('https://gst.gov.in/soft', fake), { ok: false, reason: 'soft 404' });
-  assert.equal((await probe('https://gst.gov.in/pdf', fake)).ok, true);
-  assert.deepEqual(await probe('https://gst.gov.in/missing', fake), { ok: false, reason: 'network error' });
-  assert.deepEqual(await probe('https://staging.parivahan.nic.in/', fake), { ok: false, reason: 'not official' });
+  return { deps, connects };
+}
+
+const PUBLIC = '164.100.1.1';
+
+test('probe follows redirects on official hosts and judges the final page', async () => {
+  const { deps } = fakeNet(
+    { 'uidai.gov.in': PUBLIC, 'gst.gov.in': PUBLIC },
+    {
+      'https://uidai.gov.in/old': { status: 301, headers: { location: '/new' } },
+      'https://uidai.gov.in/new': { status: 200, body: '<title>Update address</title>' },
+      'https://gst.gov.in/gone': { status: 404 },
+      'https://gst.gov.in/soft': { status: 200, body: '<title>Page not found</title>' },
+      'https://gst.gov.in/pdf': { status: 200, body: '%PDF', headers: { 'content-type': 'application/pdf' } },
+      'http://gst.gov.in/plain': { status: 200, body: '<title>GST</title>' },
+      'http://gst.gov.in/up': { status: 301, headers: { location: 'https://gst.gov.in/pdf' } },
+    },
+  );
+  assert.deepEqual(await probe('https://uidai.gov.in/old', deps), { ok: true, reason: 'http 200' });
+  assert.deepEqual(await probe('https://gst.gov.in/gone', deps), { ok: false, reason: 'http 404' });
+  assert.deepEqual(await probe('https://gst.gov.in/soft', deps), { ok: false, reason: 'soft 404' });
+  assert.equal((await probe('https://gst.gov.in/pdf', deps)).ok, true);
+  assert.deepEqual(await probe('http://gst.gov.in/plain', deps), { ok: false, reason: 'insecure http' });
+  assert.equal((await probe('http://gst.gov.in/up', deps)).ok, true, 'http is fine when it redirects straight to https');
+  assert.deepEqual(await probe('https://nope.gov.in/', deps), { ok: false, reason: 'network error' });
+  assert.deepEqual(await probe('https://staging.parivahan.nic.in/', deps), { ok: false, reason: 'not official' });
+});
+
+test('SSRF: official names that resolve to private or metadata addresses are never fetched', async () => {
+  const { deps, connects } = fakeNet(
+    { 'loop.gov.in': '127.0.0.1', 'meta.nic.in': '169.254.169.254', 'ten.gov.in': '10.1.2.3', 'cg.gov.in': '100.64.0.9', 'v6.gov.in': '::1', 'ula.gov.in': 'fd00::1', 'mapped.gov.in': '::ffff:192.168.0.1', 'zero.gov.in': '0.0.0.0' },
+    {},
+  );
+  for (const h of ['loop.gov.in', 'meta.nic.in', 'ten.gov.in', 'cg.gov.in', 'v6.gov.in', 'ula.gov.in', 'mapped.gov.in', 'zero.gov.in']) {
+    assert.deepEqual(await probe(`https://${h}/`, deps), { ok: false, reason: 'blocked address' }, h);
+  }
+  assert.equal(connects.length, 0);
+  assert.deepEqual(await probe('https://uidai.gov.in:8443/', deps), { ok: false, reason: 'non-default port or credentials' });
+  assert.ok(isBlockedIp('172.20.0.1') && isBlockedIp('192.168.1.1') && isBlockedIp('fe80::1') && !isBlockedIp(PUBLIC));
+});
+
+test('SSRF: redirects to private addresses or off the allow-list are refused on the hop', async () => {
+  const { deps, connects } = fakeNet(
+    { 'uidai.gov.in': PUBLIC, 'internal.gov.in': '10.0.0.5' },
+    {
+      'https://uidai.gov.in/a': { status: 302, headers: { location: 'https://internal.gov.in/admin' } },
+      'https://uidai.gov.in/b': { status: 302, headers: { location: 'https://evil.example.com/' } },
+      'https://uidai.gov.in/c': { status: 302, headers: { location: 'http://169.254.169.254/latest/meta-data/' } },
+    },
+  );
+  assert.deepEqual(await probe('https://uidai.gov.in/a', deps), { ok: false, reason: 'blocked address' });
+  assert.deepEqual(await probe('https://uidai.gov.in/b', deps), { ok: false, reason: 'redirect off allow-list' });
+  assert.deepEqual(await probe('https://uidai.gov.in/c', deps), { ok: false, reason: 'redirect off allow-list' });
+  assert.deepEqual(connects, ['https://uidai.gov.in/a @ 164.100.1.1', 'https://uidai.gov.in/b @ 164.100.1.1', 'https://uidai.gov.in/c @ 164.100.1.1']);
+});
+
+test('probe gives up after 5 redirects', async () => {
+  const routes: Record<string, Route> = {};
+  for (let i = 0; i < 7; i++) routes[`https://uidai.gov.in/${i}`] = { status: 302, headers: { location: `/${i + 1}` } };
+  const { deps } = fakeNet({ 'uidai.gov.in': PUBLIC }, routes);
+  assert.deepEqual(await probe('https://uidai.gov.in/0', deps), { ok: false, reason: 'too many redirects' });
+});
+
+test('TLS stays verified: certificate errors fail the check and are not cached as ok', async () => {
+  assert.equal(TLS_OPTIONS.rejectUnauthorized, true);
+  assert.ok(TLS_OPTIONS.ca.length > 100, 'system roots plus the vendored intermediates');
+  const { deps } = fakeNet({ 'pmkisan.gov.in': PUBLIC }, { 'https://pmkisan.gov.in/': 'tls' });
+  assert.deepEqual(await probe('https://pmkisan.gov.in/', deps), { ok: false, reason: 'tls error' });
+  const cache = memoryCache();
+  await createLinkChecker(cache, (u) => probe(u, deps)).verify('https://pmkisan.gov.in/');
+  assert.match((await cache.get(cacheKeyFor('https://pmkisan.gov.in/')))!, /^bad:/);
 });
 
 test('probe times out slow hosts', async () => {
-  // AbortSignal.timeout does not hold the event loop open, so the fake keeps a timer alive.
-  const hang = ((_u: unknown, init?: RequestInit) =>
-    new Promise((_r, reject) => {
-      const keep = setTimeout(() => {}, 5000);
-      init?.signal?.addEventListener('abort', () => (clearTimeout(keep), reject(init.signal!.reason)));
-    })) as typeof fetch;
-  assert.deepEqual(await probe('https://texmin.nic.in/a.pdf', hang, 50), { ok: false, reason: 'timeout' });
+  const { deps } = fakeNet({ 'texmin.nic.in': PUBLIC }, { 'https://texmin.nic.in/a.pdf': 'hang' });
+  assert.deepEqual(await probe('https://texmin.nic.in/a.pdf', deps, 50), { ok: false, reason: 'timeout' });
 });
 
 test('verdicts are cached, deduped in flight and checked with a concurrency cap', async () => {
