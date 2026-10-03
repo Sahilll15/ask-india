@@ -2,9 +2,21 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ShieldIcon } from '../components/Icons.tsx';
 
+const ogImageAlt = 'Ask India answering how to link PAN with Aadhaar with numbered steps and links to official pages';
+
 export const metadata: Metadata = {
   title: 'About',
   description: 'What Ask India is, how it answers, what it does with your data, and what it is not.',
+  alternates: { canonical: '/about' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Ask India',
+    title: 'About · Ask India',
+    description: 'What Ask India is, how it answers, what it does with your data, and what it is not.',
+    url: '/about',
+    locale: 'en_IN',
+    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: ogImageAlt }],
+  },
 };
 
 const STEPS = [

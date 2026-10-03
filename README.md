@@ -1,5 +1,7 @@
 # Ask India
 
+Plain answers to Indian government questions, with links to the official pages. Not a government website.
+
 **Live:** https://askindia.online
 
 An independent Q&A front door to Indian government information. Ask how to get a PAN, update your Aadhaar address, renew a passport, file ITR, register for GST or Udyam, block a lost phone, or apply for OCI, and get a short answer with steps, documents and fees (only when the official page states them), with numbered links to the exact official pages. Works in English, Hindi and Hinglish, typed or spoken.

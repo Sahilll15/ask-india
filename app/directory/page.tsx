@@ -5,9 +5,21 @@ import { displayDomain } from '../lib/domains.ts';
 import { ArrowRightIcon, CategoryIcon, ExternalIcon } from '../components/Icons.tsx';
 import { Hexagons } from '../components/Hexagons.tsx';
 
+const ogImageAlt = 'Ask India answering how to link PAN with Aadhaar with numbered steps and links to official pages';
+
 export const metadata: Metadata = {
   title: 'Directory',
   description: 'Topics, common questions and links to official Indian government portals.',
+  alternates: { canonical: '/directory' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Ask India',
+    title: 'Directory · Ask India',
+    description: 'Topics, common questions and links to official Indian government portals.',
+    url: '/directory',
+    locale: 'en_IN',
+    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: ogImageAlt }],
+  },
 };
 
 export default function DirectoryPage() {

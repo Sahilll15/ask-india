@@ -12,12 +12,53 @@ const mukta = Mukta({
 });
 const fraunces = Fraunces({ subsets: ['latin'], display: 'swap', variable: '--font-fraunces', axes: ['opsz'] });
 
+const siteUrl = 'https://askindia.online';
+const title = 'Ask India: answers from official government sites';
+const description =
+  'Ask how to link PAN and Aadhaar, renew a passport or register for GST, and get short steps with links to official gov.in pages. Not a government website.';
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://askindia.online'),
+  metadataBase: new URL(siteUrl),
   alternates: { canonical: '/' },
-  title: { default: 'Ask India: answers from official government sites', template: '%s · Ask India' },
-  description:
-    'An independent Q&A front door to Indian government information. Ask how to get a PAN, update Aadhaar or renew a passport, and get short steps with links to the official pages. Not a government website.',
+  title: { default: title, template: '%s · Ask India' },
+  description,
+  keywords: [
+    'PAN Aadhaar link',
+    'passport renewal steps',
+    'GST registration process',
+    'government services India',
+    'Aadhaar address update',
+    'how to apply for PAN card',
+    'ITR filing steps',
+    'Udyam registration',
+    'आधार अपडेट',
+    'पैन आधार लिंक',
+  ],
+  applicationName: 'Ask India',
+  authors: [{ name: 'Sahil Chalke', url: 'https://sahilchalke.com' }],
+  creator: 'Sahil Chalke',
+  openGraph: { type: 'website', siteName: 'Ask India', title, description, url: '/', locale: 'en_IN' },
+  twitter: { card: 'summary_large_image', creator: '@chalke1015', title, description },
+  robots: { index: true, follow: true },
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'Ask India',
+  url: siteUrl,
+  description,
+  applicationCategory: 'UtilitiesApplication',
+  operatingSystem: 'Web',
+  inLanguage: ['en-IN', 'hi'],
+  isAccessibleForFree: true,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'INR' },
+  author: {
+    '@type': 'Person',
+    name: 'Sahil Chalke',
+    url: 'https://sahilchalke.com',
+    sameAs: ['https://github.com/Sahilll15', 'https://x.com/chalke1015'],
+  },
 };
 
 export const viewport: Viewport = {
@@ -36,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-dvh">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
         <a href="#main" className="sr-only rounded bg-ink px-3 py-2 text-page focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50">
           Skip to content
         </a>

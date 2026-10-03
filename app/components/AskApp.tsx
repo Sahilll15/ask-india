@@ -211,6 +211,7 @@ export function AskApp() {
                 turns.length ? 'text-3xl' : 'text-[2.4rem] leading-[1.05] sm:text-6xl'
               }`}
             >
+              <span className="sr-only">Ask India: </span>
               Ask how to get it done.
             </h1>
             {!turns.length && (
