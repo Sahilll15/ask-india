@@ -2,17 +2,21 @@ import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import { Fraunces, Mukta } from 'next/font/google';
 import { Header } from './components/Header.tsx';
+import { JsonLd } from './components/JsonLd.tsx';
+import { PERSON_ID, SITE_URL, WEBSITE_ID } from './lib/seo.ts';
 import './globals.css';
 
+// All four weights are used (normal, medium, semibold, bold). Devanagari still loads on demand via
+// unicode-range; only the latin files are preloaded for the first paint.
 const mukta = Mukta({
-  subsets: ['latin', 'devanagari'],
+  subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
   display: 'swap',
   variable: '--font-mukta',
 });
-const fraunces = Fraunces({ subsets: ['latin'], display: 'swap', variable: '--font-fraunces', axes: ['opsz'] });
+const fraunces = Fraunces({ subsets: ['latin'], display: 'swap', variable: '--font-fraunces', axes: ['opsz'], preload: false });
 
-const siteUrl = 'https://askindia.online';
+const siteUrl = SITE_URL;
 const title = 'Ask India: answers from official government sites';
 const description =
   'Ask how to link PAN and Aadhaar, renew a passport or register for GST, and get short steps with links to official gov.in pages. Not a government website.';
@@ -42,23 +46,44 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+const person = {
+  '@type': 'Person',
+  '@id': PERSON_ID,
+  name: 'Sahil Chalke',
+  url: 'https://sahilchalke.com',
+  sameAs: ['https://github.com/Sahilll15', 'https://x.com/chalke1015'],
+};
+
 const jsonLd = {
   '@context': 'https://schema.org',
-  '@type': 'WebApplication',
-  name: 'Ask India',
-  url: siteUrl,
-  description,
-  applicationCategory: 'UtilitiesApplication',
-  operatingSystem: 'Web',
-  inLanguage: ['en-IN', 'hi'],
-  isAccessibleForFree: true,
-  offers: { '@type': 'Offer', price: '0', priceCurrency: 'INR' },
-  author: {
-    '@type': 'Person',
-    name: 'Sahil Chalke',
-    url: 'https://sahilchalke.com',
-    sameAs: ['https://github.com/Sahilll15', 'https://x.com/chalke1015'],
-  },
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': WEBSITE_ID,
+      name: 'Ask India',
+      alternateName: 'AskIndia',
+      url: siteUrl,
+      description,
+      inLanguage: ['en-IN', 'hi'],
+      publisher: { '@id': PERSON_ID },
+      author: { '@id': PERSON_ID },
+    },
+    {
+      '@type': 'WebApplication',
+      '@id': `${siteUrl}/#app`,
+      name: 'Ask India',
+      url: siteUrl,
+      description,
+      isPartOf: { '@id': WEBSITE_ID },
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Web',
+      inLanguage: ['en-IN', 'hi'],
+      isAccessibleForFree: true,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'INR' },
+      author: { '@id': PERSON_ID },
+    },
+    person,
+  ],
 };
 
 export const viewport: Viewport = {
@@ -77,7 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-dvh">
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
+        <JsonLd data={jsonLd} />
         <a href="#main" className="sr-only rounded bg-ink px-3 py-2 text-page focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50">
           Skip to content
         </a>
@@ -91,11 +116,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Read the disclaimer
               </Link>
             </p>
-            <p>
-              Built by{' '}
-              <a href="https://sahilchalke.com" className="font-medium text-ink underline-offset-4 hover:underline">
-                Sahil Chalke
+            <p className="flex flex-wrap gap-x-4 gap-y-1">
+              <a
+                href="https://github.com/Sahilll15/ask-india/issues/new"
+                className="font-medium text-brand underline-offset-4 hover:underline"
+              >
+                Report a mistake
               </a>
+              <span>
+                Built by{' '}
+                <a href="https://sahilchalke.com" className="font-medium text-ink underline-offset-4 hover:underline">
+                  Sahil Chalke
+                </a>
+              </span>
             </p>
           </div>
         </footer>

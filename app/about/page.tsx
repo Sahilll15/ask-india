@@ -1,22 +1,32 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ShieldIcon } from '../components/Icons.tsx';
+import { JsonLd } from '../components/JsonLd.tsx';
+import { PERSON_ID, SITE_URL, WEBSITE_ID, breadcrumbs, pageMetadata } from '../lib/seo.ts';
 
-const ogImageAlt = 'Ask India answering how to link PAN with Aadhaar with numbered steps and links to official pages';
+const description = 'What Ask India is, how it answers, what it does with your data, and what it is not. An independent project, not a government website.';
 
-export const metadata: Metadata = {
-  title: 'About',
-  description: 'What Ask India is, how it answers, what it does with your data, and what it is not.',
-  alternates: { canonical: '/about' },
-  openGraph: {
-    type: 'website',
-    siteName: 'Ask India',
-    title: 'About · Ask India',
-    description: 'What Ask India is, how it answers, what it does with your data, and what it is not.',
-    url: '/about',
-    locale: 'en_IN',
-    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: ogImageAlt }],
-  },
+export const metadata: Metadata = pageMetadata({ title: 'About Ask India and how it answers', description, path: '/about' });
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'AboutPage',
+      '@id': `${SITE_URL}/about#page`,
+      url: `${SITE_URL}/about`,
+      name: 'About Ask India',
+      description,
+      inLanguage: 'en-IN',
+      isPartOf: { '@id': WEBSITE_ID },
+      about: { '@id': WEBSITE_ID },
+      author: { '@id': PERSON_ID },
+    },
+    breadcrumbs([
+      { name: 'Home', path: '/' },
+      { name: 'About', path: '/about' },
+    ]),
+  ],
 };
 
 const STEPS = [
@@ -29,7 +39,10 @@ const STEPS = [
 export default function AboutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 pt-10 sm:px-6 sm:pt-14">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">About · परिचय</p>
+      <JsonLd data={jsonLd} />
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
+        About · <span lang="hi">परिचय</span>
+      </p>
       <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">A front door, not the office</h1>
       <p className="mt-4 text-lg text-ink-soft">
         Ask India is an independent project. You ask how to do something with the government, like getting a PAN, updating your Aadhaar
@@ -112,6 +125,14 @@ export default function AboutPage() {
           Sahil Chalke
         </a>
         . Inspired by an independent Q&amp;A site for Pakistan government information.
+      </p>
+
+      <p className="mt-4 px-1 text-ink-soft">
+        Found a mistake in an answer or a guide?{' '}
+        <a href="https://github.com/Sahilll15/ask-india/issues/new" className="font-medium text-brand hover:underline">
+          Report it on GitHub
+        </a>
+        .
       </p>
     </div>
   );
