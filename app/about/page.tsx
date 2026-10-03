@@ -124,7 +124,7 @@ export default function AboutPage() {
         <a href="https://sahilchalke.com" className="font-semibold text-brand hover:underline">
           Sahil Chalke
         </a>
-        . Inspired by an independent Q&amp;A site for Pakistan government information.
+        .
       </p>
 
       <p className="mt-4 px-1 text-ink-soft">
