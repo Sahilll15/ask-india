@@ -31,6 +31,13 @@ npm test                     # redaction, citation filter, limiter, cache, langu
 npm run verify:links         # curls every directory URL, fails on non-200 or non-official redirect
 ```
 
+`npm run eval` asks the 42 questions in `eval/questions.json` (Aadhaar, PAN, passport, tax, GST, transport, welfare, two-part, Hindi, Hinglish and three that must be declined) against a running server and fails unless at least 90 percent pass and every shown link returns 200 with a browser user agent. It also checks that sources are official and the answer is in the question's language. Start the server with a raised limit and a separate Redis namespace so the run never spends production's counters:
+
+```bash
+RATE_LIMIT_NAMESPACE=ask-india-eval RATE_LIMIT_QUESTIONS=500 npm start
+EVAL_CONCURRENCY=1 npm run eval   # BASE_URL defaults to http://localhost:3206, about $0.90 per full run
+```
+
 Functions run in Mumbai (`bom1`, set in `vercel.json`) because several gov.in sites are slow or refuse requests from US regions, and the Redis database is in the same region.
 
 ## Config
@@ -45,6 +52,7 @@ Functions run in Mumbai (`bom1`, set in `vercel.json`) because several gov.in si
 | `RATE_LIMIT_TRANSCRIBES` | `6` | Voice clips per IP per window |
 | `RATE_LIMIT_FEEDBACK` | `30` | Votes per IP per window |
 | `RATE_LIMIT_WINDOW_MS` | `3600000` | Limiter window |
+| `RATE_LIMIT_NAMESPACE` | `ask-india` | Redis key namespace for limits; set a different one for local runs |
 | `DAILY_QUESTION_BUDGET` | `300` | Questions across all instances per UTC day |
 | `KV_REST_API_URL`, `KV_REST_API_TOKEN` | | Upstash Redis for shared limits (set by the Vercel integration; `vercel env pull .env.local` for local use) |
 

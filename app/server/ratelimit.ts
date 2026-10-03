@@ -143,7 +143,9 @@ export function createDailyBudget(limit: number, today = () => new Date().toISOS
 
 const limiter = createLimiter();
 const redis = redisFromEnv();
-const shared = redis ? createRedisWindow(redis, 'ask-india') : null;
+// Local runs against the shared database set this so they never spend production's counters.
+const APP = process.env.RATE_LIMIT_NAMESPACE || 'ask-india';
+const shared = redis ? createRedisWindow(redis, APP) : null;
 
 /** Counts one hit. Throws LimiterUnavailable when Redis is configured but unreachable. */
 export async function check(req: Request, name: keyof typeof LIMITS): Promise<Verdict> {
@@ -169,7 +171,7 @@ export async function peek(req: Request, name: keyof typeof LIMITS): Promise<{ r
 
 export const DAILY_QUESTIONS = envInt(process.env.DAILY_QUESTION_BUDGET, 300);
 const localBudget = createDailyBudget(DAILY_QUESTIONS);
-const sharedBudget = redis ? createRedisBudget(redis, 'ask-india', 'questions', DAILY_QUESTIONS) : null;
+const sharedBudget = redis ? createRedisBudget(redis, APP, 'questions', DAILY_QUESTIONS) : null;
 
 /** Global daily question cap: Redis when configured, otherwise this instance's memory. */
 export const questionBudget = {

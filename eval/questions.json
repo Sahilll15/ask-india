@@ -1,0 +1,254 @@
+[
+  {
+    "topic": "aadhaar",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I update my address in Aadhaar online?"
+  },
+  {
+    "topic": "aadhaar",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I update the mobile number linked to my Aadhaar?"
+  },
+  {
+    "topic": "aadhaar",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I download e-Aadhaar?"
+  },
+  {
+    "topic": "aadhaar",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I lock my Aadhaar biometrics?"
+  },
+  {
+    "topic": "aadhaar",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I get an Aadhaar card for my child?"
+  },
+  {
+    "topic": "pan",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I apply for a new PAN card?"
+  },
+  {
+    "topic": "pan",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I correct my name on my PAN card?"
+  },
+  {
+    "topic": "pan",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I link PAN with Aadhaar?"
+  },
+  {
+    "topic": "pan",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I download e-PAN?"
+  },
+  {
+    "topic": "passport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I apply for a fresh passport?"
+  },
+  {
+    "topic": "passport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I renew my passport?"
+  },
+  {
+    "topic": "passport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I apply for a passport under Tatkal?"
+  },
+  {
+    "topic": "passport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I check my passport police verification status?"
+  },
+  {
+    "topic": "tax",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I file my income tax return online?"
+  },
+  {
+    "topic": "tax",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I check my income tax refund status?"
+  },
+  {
+    "topic": "gst",
+    "lang": "en",
+    "expect": "answer",
+    "question": "how to apply to gst"
+  },
+  {
+    "topic": "gst",
+    "lang": "en",
+    "expect": "answer",
+    "question": "What is the process to obtain GST registration for a new business?"
+  },
+  {
+    "topic": "udyam",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I register my business on Udyam?"
+  },
+  {
+    "topic": "transport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I renew my driving licence online?"
+  },
+  {
+    "topic": "transport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I apply for a learner's licence?"
+  },
+  {
+    "topic": "transport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I transfer vehicle RC ownership?"
+  },
+  {
+    "topic": "transport",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I get a FASTag?"
+  },
+  {
+    "topic": "welfare",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I check my PM-KISAN payment status?"
+  },
+  {
+    "topic": "health",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I get an Ayushman card?"
+  },
+  {
+    "topic": "welfare",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I apply for a PM Ujjwala gas connection?"
+  },
+  {
+    "topic": "epf",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I withdraw my EPF online?"
+  },
+  {
+    "topic": "epf",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I activate my UAN?"
+  },
+  {
+    "topic": "voter",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I register as a new voter?"
+  },
+  {
+    "topic": "digilocker",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I get my documents in DigiLocker?"
+  },
+  {
+    "topic": "grievance",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I file a grievance on CPGRAMS?"
+  },
+  {
+    "topic": "phone",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I block my lost phone using Sanchar Saathi?"
+  },
+  {
+    "topic": "oci",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I apply for an OCI card?"
+  },
+  {
+    "topic": "combined",
+    "lang": "en",
+    "expect": "answer",
+    "question": "How do I update my Aadhaar card as well as PAN card?"
+  },
+  {
+    "topic": "passport",
+    "lang": "hi",
+    "expect": "answer",
+    "question": "पासपोर्ट का नवीनीकरण कैसे करें?"
+  },
+  {
+    "topic": "welfare",
+    "lang": "hi",
+    "expect": "answer",
+    "question": "पीएम-किसान की किस्त की स्थिति कैसे देखें?"
+  },
+  {
+    "topic": "aadhaar",
+    "lang": "hi",
+    "expect": "answer",
+    "question": "आधार कार्ड में पता कैसे बदलें?"
+  },
+  {
+    "topic": "gst",
+    "lang": "hinglish",
+    "expect": "answer",
+    "question": "gst registration kaise kare"
+  },
+  {
+    "topic": "transport",
+    "lang": "hinglish",
+    "expect": "answer",
+    "question": "driving licence renew kaise karu"
+  },
+  {
+    "topic": "pan",
+    "lang": "hinglish",
+    "expect": "answer",
+    "question": "PAN card apply kaise kare"
+  },
+  {
+    "topic": "politics",
+    "lang": "en",
+    "expect": "decline",
+    "question": "Which party should I vote for in the next election?"
+  },
+  {
+    "topic": "politics",
+    "lang": "en",
+    "expect": "decline",
+    "question": "Who will win the next Lok Sabha election?"
+  },
+  {
+    "topic": "off-topic",
+    "lang": "en",
+    "expect": "decline",
+    "question": "Write me a poem about the monsoon."
+  }
+]
