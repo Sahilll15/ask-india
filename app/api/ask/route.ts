@@ -9,7 +9,7 @@ import { answerCache, cacheKey, counters } from '../../server/cache.ts';
 import { bad, readJson, upstreamError } from '../../server/http.ts';
 import { estimateCost, openai, TEXT_MODEL } from '../../server/openai.ts';
 import { instructions } from '../../server/prompts.ts';
-import { budgetSpent, check, LIMITS, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
+import { DAILY_QUESTIONS, LIMITS, budgetSpent, check, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
 
 export const maxDuration = 60;
 
@@ -51,6 +51,16 @@ const STREAM_HEADERS = {
 
 function quotaFor(req: Request): Quota {
   return { limit: LIMITS.question.limit, ...peek(req, 'question') };
+}
+
+// Quota lives in this route so it reads the same limiter memory that POST writes.
+export function GET(req: Request) {
+  const { remaining, resetAt } = peek(req, 'question');
+  const dailyLeft = Math.max(0, DAILY_QUESTIONS - questionBudget.used());
+  return Response.json(
+    { limit: LIMITS.question.limit, remaining: dailyLeft === 0 ? 0 : remaining, resetAt, dailyExhausted: dailyLeft === 0 },
+    { headers: { 'cache-control': 'no-store' } },
+  );
 }
 
 export async function POST(req: Request) {

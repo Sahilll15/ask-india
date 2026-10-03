@@ -10,7 +10,7 @@ export function useQuota() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/quota', { cache: 'no-store' });
+      const res = await fetch('/api/ask', { cache: 'no-store' });
       if (res.ok) setQuota(await res.json());
     } catch {}
   }, []);
