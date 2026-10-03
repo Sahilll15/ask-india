@@ -1,8 +1,7 @@
 import { counters } from '../../server/cache.ts';
 import { bad, readJson } from '../../server/http.ts';
-import { check, tooMany } from '../../server/ratelimit.ts';
+import { LimiterUnavailable, check, limiterBusy, tooMany } from '../../server/ratelimit.ts';
 
-// Same config as the other API routes so Vercel bundles them into one function and they share limiter memory.
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
@@ -10,8 +9,13 @@ export async function POST(req: Request) {
   if (!read.ok) return read.res;
   const vote = (read.body as { vote?: unknown })?.vote;
   if (vote !== 'up' && vote !== 'down') return bad('vote must be "up" or "down".');
-  const gate = check(req, 'feedback');
-  if (!gate.ok) return tooMany(gate.retryAfter, 'feedback votes');
+  try {
+    const gate = await check(req, 'feedback');
+    if (!gate.ok) return tooMany(gate.retryAfter, 'feedback votes');
+  } catch (err) {
+    if (err instanceof LimiterUnavailable) return limiterBusy();
+    throw err;
+  }
   counters[vote]++;
   return Response.json({ ok: true });
 }

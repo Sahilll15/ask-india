@@ -9,7 +9,7 @@ import { answerCache, cacheKey, counters } from '../../server/cache.ts';
 import { bad, readJson, upstreamError } from '../../server/http.ts';
 import { estimateCost, openai, TEXT_MODEL } from '../../server/openai.ts';
 import { instructions } from '../../server/prompts.ts';
-import { DAILY_QUESTIONS, LIMITS, budgetSpent, check, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
+import { DAILY_QUESTIONS, LIMITS, LimiterUnavailable, budgetSpent, check, limiterBusy, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
 
 export const maxDuration = 60;
 
@@ -36,7 +36,7 @@ type Done = {
   related: Portal[];
   footer: string;
   cached: boolean;
-  quota: Quota;
+  quota: Quota | null;
   meta?: { ms: number; costUsd: number; searches: number; model: string };
 };
 type Quota = { limit: number; remaining: number; resetAt: number | null };
@@ -49,18 +49,28 @@ const STREAM_HEADERS = {
   'x-accel-buffering': 'no',
 };
 
-function quotaFor(req: Request): Quota {
-  return { limit: LIMITS.question.limit, ...peek(req, 'question') };
+// A failed read only hides the counter; the client keeps its last known quota.
+async function quotaOrNull(req: Request): Promise<Quota | null> {
+  try {
+    return { limit: LIMITS.question.limit, ...(await peek(req, 'question')) };
+  } catch {
+    return null;
+  }
 }
 
-// Quota lives in this route so it reads the same limiter memory that POST writes.
-export function GET(req: Request) {
-  const { remaining, resetAt } = peek(req, 'question');
-  const dailyLeft = Math.max(0, DAILY_QUESTIONS - questionBudget.used());
-  return Response.json(
-    { limit: LIMITS.question.limit, remaining: dailyLeft === 0 ? 0 : remaining, resetAt, dailyExhausted: dailyLeft === 0 },
-    { headers: { 'cache-control': 'no-store' } },
-  );
+// Quota is served here next to POST; both read the same Redis counters.
+export async function GET(req: Request) {
+  try {
+    const [{ remaining, resetAt }, used] = await Promise.all([peek(req, 'question'), questionBudget.used()]);
+    const dailyLeft = Math.max(0, DAILY_QUESTIONS - used);
+    return Response.json(
+      { limit: LIMITS.question.limit, remaining: dailyLeft === 0 ? 0 : remaining, resetAt, dailyExhausted: dailyLeft === 0 },
+      { headers: { 'cache-control': 'no-store' } },
+    );
+  } catch (err) {
+    if (err instanceof LimiterUnavailable) return limiterBusy();
+    throw err;
+  }
 }
 
 export async function POST(req: Request) {
@@ -84,13 +94,18 @@ export async function POST(req: Request) {
   const hit = key ? answerCache.get(key) : null;
   if (hit) {
     counters.cached++;
-    const done: Done = { t: 'done', kind: 'answer', ...hit, related: [], cached: true, quota: quotaFor(req) };
+    const done: Done = { t: 'done', kind: 'answer', ...hit, related: [], cached: true, quota: await quotaOrNull(req) };
     return new Response(new Blob([line({ t: 'meta', removed: [...removed], lang }), line(done)]).stream(), { headers: STREAM_HEADERS });
   }
 
-  const gate = check(req, 'question');
-  if (!gate.ok) return tooMany(gate.retryAfter, `${LIMITS.question.limit} questions`);
-  if (!questionBudget.take()) return budgetSpent();
+  try {
+    const gate = await check(req, 'question');
+    if (!gate.ok) return tooMany(gate.retryAfter, `${LIMITS.question.limit} questions`);
+    if (!(await questionBudget.take())) return budgetSpent();
+  } catch (err) {
+    if (err instanceof LimiterUnavailable) return limiterBusy();
+    throw err;
+  }
   counters.questions++;
 
   const input: ResponseInputItem[] = [
@@ -178,7 +193,7 @@ export async function POST(req: Request) {
           }
         }
 
-        const done = finish(req, lang, question, finalText, finalAnnotations);
+        const done = finish(await quotaOrNull(req), lang, question, finalText, finalAnnotations);
         const costUsd = estimateCost(usage, searches);
         done.meta = { ms: Date.now() - started, costUsd, searches, model: TEXT_MODEL };
         if (done.kind === 'answer' && key) {
@@ -202,8 +217,8 @@ export async function POST(req: Request) {
   return new Response(body, { headers: STREAM_HEADERS });
 }
 
-function finish(req: Request, lang: Lang, question: string, text: string, annotations: Annotation[]): Done {
-  const base = { t: 'done' as const, cached: false, quota: quotaFor(req), footer: FOOTER[lang], related: [] as Portal[] };
+function finish(quota: Quota | null, lang: Lang, question: string, text: string, annotations: Annotation[]): Done {
+  const base = { t: 'done' as const, cached: false, quota, footer: FOOTER[lang], related: [] as Portal[] };
   if (text.includes(DECLINE_TAG)) {
     counters.declined++;
     const plain = text.replaceAll(DECLINE_TAG, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim();

@@ -4,7 +4,7 @@ import { audioDurationSeconds } from '../../lib/audio-duration.ts';
 import { redact } from '../../lib/redact.ts';
 import { bad, readCapped, upstreamError } from '../../server/http.ts';
 import { openai, TRANSCRIBE_MODEL } from '../../server/openai.ts';
-import { check, tooMany } from '../../server/ratelimit.ts';
+import { LimiterUnavailable, check, limiterBusy, tooMany } from '../../server/ratelimit.ts';
 
 export const maxDuration = 60;
 
@@ -26,8 +26,13 @@ export async function POST(req: Request) {
   if (seconds === null) return bad('Could not read the length of this recording. Try again.', 415);
   if (seconds > 35) return bad('Recordings are capped at 30 seconds.', 413);
 
-  const gate = check(req, 'transcribe');
-  if (!gate.ok) return tooMany(gate.retryAfter, 'voice questions');
+  try {
+    const gate = await check(req, 'transcribe');
+    if (!gate.ok) return tooMany(gate.retryAfter, 'voice questions');
+  } catch (err) {
+    if (err instanceof LimiterUnavailable) return limiterBusy();
+    throw err;
+  }
 
   try {
     const file = await toFile(read.bytes, `question.${ext}`, { type });

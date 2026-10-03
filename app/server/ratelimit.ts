@@ -1,3 +1,5 @@
+import { createRedisBudget, createRedisWindow, LimiterUnavailable, limiterBusy, redisFromEnv } from './redis-limit.ts';
+
 const HOUR = 60 * 60 * 1000;
 const SWEEP_EVERY = 60_000;
 
@@ -109,7 +111,7 @@ export function createLimiter(maxKeys = 10_000) {
   };
 }
 
-/** A per-instance counter that resets at UTC midnight. */
+/** An in-memory counter that resets at UTC midnight (fallback when Redis is not configured). */
 export function createDailyBudget(limit: number, today = () => new Date().toISOString().slice(0, 10)) {
   let day = today();
   let used = 0;
@@ -140,21 +142,43 @@ export function createDailyBudget(limit: number, today = () => new Date().toISOS
 }
 
 const limiter = createLimiter();
+const redis = redisFromEnv();
+const shared = redis ? createRedisWindow(redis, 'ask-india') : null;
 
-export function check(req: Request, name: keyof typeof LIMITS) {
-  return limiter.hit(`${name}:${clientIp(req)}`, LIMITS[name]);
+/** Counts one hit. Throws LimiterUnavailable when Redis is configured but unreachable. */
+export async function check(req: Request, name: keyof typeof LIMITS): Promise<Verdict> {
+  const { limit, windowMs } = LIMITS[name];
+  if (!shared) return limiter.hit(`${name}:${clientIp(req)}`, LIMITS[name]);
+  const now = Date.now();
+  const r = await shared.take(name, clientIp(req), limit, windowMs, now);
+  return r.ok ? { ok: true, remaining: r.remaining } : { ok: false, retryAfter: Math.max(1, Math.ceil((r.resetAt - now) / 1000)) };
 }
 
-export function isBlocked(req: Request, name: keyof typeof LIMITS) {
-  return limiter.blocked(`${name}:${clientIp(req)}`, LIMITS[name]);
+export async function isBlocked(req: Request, name: keyof typeof LIMITS) {
+  if (!shared) return limiter.blocked(`${name}:${clientIp(req)}`, LIMITS[name]);
+  const now = Date.now();
+  const p = await shared.peek(name, clientIp(req), LIMITS[name].limit, now);
+  return p.remaining === 0 && p.resetAt ? Math.max(1, Math.ceil((p.resetAt - now) / 1000)) : 0;
 }
 
-export function peek(req: Request, name: keyof typeof LIMITS) {
-  return limiter.peek(`${name}:${clientIp(req)}`, LIMITS[name]);
+export async function peek(req: Request, name: keyof typeof LIMITS): Promise<{ remaining: number; resetAt: number | null }> {
+  if (!shared) return limiter.peek(`${name}:${clientIp(req)}`, LIMITS[name]);
+  const { remaining, resetAt } = await shared.peek(name, clientIp(req), LIMITS[name].limit);
+  return { remaining, resetAt };
 }
 
 export const DAILY_QUESTIONS = envInt(process.env.DAILY_QUESTION_BUDGET, 300);
-export const questionBudget = createDailyBudget(DAILY_QUESTIONS);
+const localBudget = createDailyBudget(DAILY_QUESTIONS);
+const sharedBudget = redis ? createRedisBudget(redis, 'ask-india', 'questions', DAILY_QUESTIONS) : null;
+
+/** Global daily question cap: Redis when configured, otherwise this instance's memory. */
+export const questionBudget = {
+  take: async (amount = 1) => (sharedBudget ? sharedBudget.take(amount) : localBudget.take(amount)),
+  add: async (amount: number) => (sharedBudget ? sharedBudget.add(amount) : localBudget.add(amount)),
+  used: async () => (sharedBudget ? sharedBudget.used() : localBudget.used()),
+};
+
+export { LimiterUnavailable, limiterBusy };
 
 export function budgetSpent() {
   return Response.json(

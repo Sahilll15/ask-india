@@ -33,7 +33,7 @@ type Done = {
   related: Portal[];
   footer: string;
   cached: boolean;
-  quota: { limit: number; remaining: number; resetAt: number | null };
+  quota: { limit: number; remaining: number; resetAt: number | null } | null;
 };
 
 type Turn = {
@@ -97,7 +97,7 @@ export function AskApp() {
         });
         if (!res.ok || !res.body) {
           const json = await res.json().catch(() => ({}));
-          if (res.status === 429 || res.status === 503) {
+          if (res.status === 429 || json.code === 'daily_budget') {
             // Nothing partial: drop the turn entirely and give the question back.
             setTurns((prev) => prev.filter((t) => t.id !== id));
             setInput(raw);
@@ -105,7 +105,7 @@ export function AskApp() {
               limit: prevQ?.limit ?? 8,
               remaining: 0,
               resetAt: json.resetAt ?? prevQ?.resetAt ?? null,
-              dailyExhausted: res.status === 503,
+              dailyExhausted: json.code === 'daily_budget',
             }));
             return;
           }
@@ -132,7 +132,7 @@ export function AskApp() {
             else if (ev.t === 'done') {
               finished = true;
               patch(id, () => ({ status: 'done', done: ev, text: '' }));
-              setQuota({ ...ev.quota, dailyExhausted: false });
+              if (ev.quota) setQuota({ ...ev.quota, dailyExhausted: false });
             } else if (ev.t === 'error') {
               finished = true;
               patch(id, () => ({ status: 'error', error: ev.error, text: '' }));

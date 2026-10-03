@@ -11,6 +11,7 @@
     "verify:links": "node --experimental-strip-types --no-warnings scripts/verify-links.ts"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "next": "16.3.5",
     "openai": "^7.27.0",
     "react": "19.2.8",

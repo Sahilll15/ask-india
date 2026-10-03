@@ -14,7 +14,7 @@ It is for people who know what they need to do but not where on which portal. It
 - **Language.** A small detector picks English, Hindi (Devanagari share) or Hinglish (romanised Hindi word list), and the prompt asks for the answer in that language.
 - **Voice.** `gpt-4o-mini-transcribe`, recording capped at 30 seconds in the browser and 1 MB on the server, rate limited, and redacted before the text reaches the composer.
 - **Follow-ups.** The browser sends the last 3 answered turns (redacted, trimmed); nothing is kept server side.
-- **Cost controls.** Per-IP hourly question budget (default 8) and a per-instance daily cap (default 300), using the hardened limiter (x-real-ip first, then the last x-forwarded-for hop, IPv6 grouped by /64, bounded memory). Input is validated before it counts. `GET /api/ask` drives the "N questions left this hour" line and the countdown banner, and the composer is disabled when spent, so no request is sent. A 429 never leaves a partial answer. Identical first questions (after redaction) are served from a 12 hour in-memory cache that does not use quota. Bodies are read as capped streams (16 KB for questions, 413 above).
+- **Cost controls.** Per-IP hourly question budget (default 8), a voice clip limit (default 6) and a global daily cap (default 300). Counts are global across instances: they live in Upstash Redis, where the first counted request starts the hour and a refused request is not counted. The client key is x-real-ip first, then the last x-forwarded-for hop, with IPv6 grouped by /64. Without the Redis env vars (local dev, tests) the limiter falls back to per-process memory. If Redis is configured but unreachable, question and voice requests get a 503 "The service is busy" instead of running unmetered. Input is validated before it counts. `GET /api/ask` drives the "N questions left this hour" line and the countdown banner, and the composer is disabled when spent, so no request is sent. A 429 never leaves a partial answer. Identical first questions (after redaction) are served from a 12 hour in-memory cache that does not use quota. Bodies are read as capped streams (16 KB for questions, 413 above).
 - **Feedback.** Thumbs up or down increments an anonymous in-memory counter. No text is stored.
 
 Measured locally with `gpt-5.4-mini`: about 6 to 9 seconds per answer, first text after 4 to 8 seconds (search time), and about $0.015 to $0.037 per question, mostly the $0.01 per search call. Declines cost about $0.001. Cached answers are free.
@@ -41,6 +41,7 @@ npm run verify:links         # curls every directory URL, fails on non-200 or no
 | `RATE_LIMIT_TRANSCRIBES` | `6` | Voice clips per IP per window |
 | `RATE_LIMIT_FEEDBACK` | `30` | Votes per IP per window |
 | `RATE_LIMIT_WINDOW_MS` | `3600000` | Limiter window |
-| `DAILY_QUESTION_BUDGET` | `300` | Questions per instance per UTC day |
+| `DAILY_QUESTION_BUDGET` | `300` | Questions across all instances per UTC day |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | | Upstash Redis for shared limits (set by the Vercel integration; `vercel env pull .env.local` for local use) |
 
 Built by [Sahil Chalke](https://sahilchalke.com). Not affiliated with the Government of India.
