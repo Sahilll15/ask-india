@@ -41,10 +41,17 @@ export function hostOf(raw: string) {
   }
 }
 
-/** True only for gov.in, nic.in or an allow-listed host, or a real subdomain of one. */
+const PREVIEW_LABEL = /^(staging|stage|stg|test|testing|uat|dev|develop|demo|beta|preprod|sandbox|qa)(\d+|-.*)?$/;
+
+/** Staging, test, UAT, dev, demo and beta copies of a portal are never shown to users. */
+export function isPreviewHost(host: string) {
+  return host.toLowerCase().split('.').some((label) => PREVIEW_LABEL.test(label));
+}
+
+/** True only for gov.in, nic.in or an allow-listed host, or a real subdomain of one that is not a preview copy. */
 export function isOfficialHost(host: string) {
   const h = host.toLowerCase().replace(/\.$/, '');
-  if (!h || /[^a-z0-9.-]/.test(h) || h.includes('..')) return false;
+  if (!h || /[^a-z0-9.-]/.test(h) || h.includes('..') || isPreviewHost(h)) return false;
   return ALLOWED_ROOTS.some((root) => h === root || h.endsWith(`.${root}`));
 }
 

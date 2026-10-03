@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import type { ResponseInputItem } from 'openai/resources/responses/responses';
-import { applyCitations, DECLINE_TAG, dropOffer, type Annotation, type Source } from '../../lib/citations.ts';
-import { relatedPortals, type Portal } from '../../lib/directory.ts';
-import { displayDomain, isOfficialUrl, SEARCH_DOMAINS } from '../../lib/domains.ts';
+import { applyCitations, DECLINE_TAG, dropOffer, keepVerified, shownUrls, type Annotation, type Source } from '../../lib/citations.ts';
+import { bestPortal, relatedPortals, type Portal } from '../../lib/directory.ts';
+import { cleanUrl, displayDomain, isOfficialUrl, SEARCH_DOMAINS } from '../../lib/domains.ts';
 import { detectLang, FOOTER, NOT_FOUND, type Lang } from '../../lib/lang.ts';
 import { redact, type RemovedKind } from '../../lib/redact.ts';
 import { answerCache, cacheKey, counters } from '../../server/cache.ts';
 import { bad, readJson, upstreamError } from '../../server/http.ts';
+import { linkChecker } from '../../server/linkcheck.ts';
 import { estimateCost, openai, TEXT_MODEL } from '../../server/openai.ts';
 import { instructions } from '../../server/prompts.ts';
 import { DAILY_QUESTIONS, LIMITS, LimiterUnavailable, budgetSpent, check, limiterBusy, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
@@ -34,10 +35,11 @@ type Done = {
   text: string;
   sources: Source[];
   related: Portal[];
+  portal: Portal | null;
   footer: string;
   cached: boolean;
   quota: Quota | null;
-  meta?: { ms: number; costUsd: number; searches: number; model: string };
+  meta?: { ms: number; costUsd: number; searches: number; model: string; checkedLinks: number; droppedLinks: number };
 };
 type Quota = { limit: number; remaining: number; resetAt: number | null };
 
@@ -94,7 +96,7 @@ export async function POST(req: Request) {
   const hit = key ? answerCache.get(key) : null;
   if (hit) {
     counters.cached++;
-    const done: Done = { t: 'done', kind: 'answer', ...hit, related: [], cached: true, quota: await quotaOrNull(req) };
+    const done: Done = { t: 'done', kind: 'answer', ...hit, related: [], portal: bestPortal(question, hit.text), cached: true, quota: await quotaOrNull(req) };
     return new Response(new Blob([line({ t: 'meta', removed: [...removed], lang }), line(done)]).stream(), { headers: STREAM_HEADERS });
   }
 
@@ -156,6 +158,7 @@ export async function POST(req: Request) {
       let finalText = '';
       let finalAnnotations: Annotation[] = [];
       let usage;
+      const links = linkChecker();
 
       try {
         for await (const ev of upstream) {
@@ -170,6 +173,8 @@ export async function POST(req: Request) {
             else pending += ev.delta;
           } else if (ev.type === 'response.output_text.annotation.added') {
             const a = ev.annotation as Annotation;
+            // Start checking each cited link while the text is still streaming.
+            if (a.type === 'url_citation' && a.url && isOfficialUrl(a.url)) void links.verify(cleanUrl(a.url));
             if (!open && a.type === 'url_citation' && a.url && isOfficialUrl(a.url)) {
               open = true;
               send({ t: 'status', stage: 'writing' });
@@ -193,9 +198,23 @@ export async function POST(req: Request) {
           }
         }
 
-        const done = finish(await quotaOrNull(req), lang, question, finalText, finalAnnotations);
+        let done = finish(await quotaOrNull(req), lang, question, finalText, finalAnnotations);
+        let checkedLinks = 0;
+        let droppedLinks = 0;
+        if (done.kind === 'answer') {
+          const urls = shownUrls(done.text, done.sources);
+          const verdicts = await links.verifyAll(urls);
+          const bad = [...verdicts].filter(([, v]) => !v.ok);
+          checkedLinks = urls.length;
+          droppedLinks = bad.length;
+          if (bad.length) console.warn('ask dropped links', JSON.stringify(bad.map(([url, v]) => ({ url, reason: v.reason }))));
+          const kept = keepVerified(done.text, done.sources, (url) => verdicts.get(url)?.ok === true);
+          done = kept.sources.length
+            ? { ...done, text: kept.text, sources: kept.sources }
+            : noSource(done.quota, lang, question);
+        }
         const costUsd = estimateCost(usage, searches);
-        done.meta = { ms: Date.now() - started, costUsd, searches, model: TEXT_MODEL };
+        done.meta = { ms: Date.now() - started, costUsd, searches, model: TEXT_MODEL, checkedLinks, droppedLinks };
         if (done.kind === 'answer' && key) {
           answerCache.set(key, { text: done.text, sources: done.sources, lang, footer: done.footer });
         }
@@ -217,17 +236,20 @@ export async function POST(req: Request) {
   return new Response(body, { headers: STREAM_HEADERS });
 }
 
+function noSource(quota: Quota | null, lang: Lang, question: string): Done {
+  counters.noSource++;
+  return { t: 'done', cached: false, quota, footer: FOOTER[lang], portal: null, kind: 'nosource', text: NOT_FOUND[lang], sources: [], related: relatedPortals(question) };
+}
+
 function finish(quota: Quota | null, lang: Lang, question: string, text: string, annotations: Annotation[]): Done {
-  const base = { t: 'done' as const, cached: false, quota, footer: FOOTER[lang], related: [] as Portal[] };
+  const base = { t: 'done' as const, cached: false, quota, footer: FOOTER[lang], related: [] as Portal[], portal: null };
   if (text.includes(DECLINE_TAG)) {
     counters.declined++;
     const plain = text.replaceAll(DECLINE_TAG, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim();
     return { ...base, kind: 'decline', text: plain, sources: [], related: relatedPortals(question) };
   }
   const cited = applyCitations(text, annotations);
-  if (!cited.sources.length) {
-    counters.noSource++;
-    return { ...base, kind: 'nosource', text: NOT_FOUND[lang], sources: [], related: relatedPortals(question) };
-  }
-  return { ...base, kind: 'answer', text: dropOffer(cited.text), sources: cited.sources };
+  if (!cited.sources.length) return noSource(quota, lang, question);
+  const answer = dropOffer(cited.text);
+  return { ...base, kind: 'answer', text: answer, sources: cited.sources, portal: bestPortal(question, answer) };
 }

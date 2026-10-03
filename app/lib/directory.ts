@@ -219,3 +219,39 @@ export const SAMPLES = [
   'पासपोर्ट का नवीनीकरण कैसे करें?',
   'Lost phone ko Sanchar Saathi par block kaise karein?',
 ];
+
+// Topic to the one national portal for it. Order breaks ties: earlier topics win.
+const TOPICS: { re: RegExp; portal: keyof typeof PORTALS }[] = [
+  { re: /\b(aadhaa?r|uidai)\b|आधार/i, portal: 'myAadhaar' },
+  { re: /\b(pan|itr|income[- ]tax|tds|refund|e-?filing)\b|पैन|आयकर/i, portal: 'incomeTax' },
+  { re: /\bpassport\b|पासपोर्ट/i, portal: 'passport' },
+  { re: /\bgst(in)?\b|जीएसटी/i, portal: 'gst' },
+  { re: /\b(driving|licen[cs]e|learner'?s?|\bdl)\b|लाइसेंस|ड्राइविंग/i, portal: 'sarathi' },
+  { re: /\b(vehicle|rc|registration certificate|challan|number plate|fastag)\b|वाहन/i, portal: 'parivahan' },
+  { re: /\b(ayushman|pm-?jay|golden card)\b|आयुष्मान/i, portal: 'ayushman' },
+  { re: /\babha\b|आभा/i, portal: 'abha' },
+  { re: /\b(epfo?|uan|provident fund|pf)\b/i, portal: 'epfo' },
+  { re: /\b(udyam|msme)\b/i, portal: 'udyam' },
+  { re: /\b(voter|epic|electoral roll)\b|मतदाता/i, portal: 'voters' },
+  { re: /\bdigilocker\b|डिजिलॉकर/i, portal: 'digilocker' },
+  { re: /\b(lost|stolen|chori)\b.*\b(phone|mobile)\b|\b(sim|imei|sanchar)\b|मोबाइल/i, portal: 'sancharSaathi' },
+  { re: /\bkisan\b|किसान/i, portal: 'pmKisan' },
+  { re: /\bscholarships?\b|छात्रवृत्ति/i, portal: 'scholarships' },
+  { re: /\boci\b/i, portal: 'oci' },
+  { re: /\b(e-?shram)\b/i, portal: 'eshram' },
+  { re: /\b(cyber|online fraud|scam)\b/i, portal: 'cybercrime' },
+  { re: /\bconsumer\b|उपभोक्ता/i, portal: 'consumer' },
+  { re: /\b(grievance|cpgrams)\b|शिकायत/i, portal: 'cpgrams' },
+];
+
+/** The single best national portal for a question, matched on the question first and the answer second. */
+export function bestPortal(question: string, answer = ''): Portal {
+  const score = (text: string, weight: number) =>
+    TOPICS.map((t, i) => {
+      const m = text.match(t.re);
+      return { portal: t.portal, rank: m ? weight * 1000 - (m.index ?? 0) - i / 100 : -Infinity };
+    });
+  const all = [...score(question, 2), ...score(answer, 1)].filter((s) => s.rank > -Infinity).sort((a, b) => b.rank - a.rank);
+  if (all.length) return PORTALS[all[0].portal];
+  return relatedPortals(question, 1)[0] ?? PORTALS.nationalPortal;
+}

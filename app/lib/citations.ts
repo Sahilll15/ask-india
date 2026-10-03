@@ -80,3 +80,30 @@ export function dropOffer(text: string) {
   const last = paras.at(-1)?.trim() ?? '';
   return paras.length > 1 && OFFER.test(last) && !/\[\d{1,2}\]/.test(last) ? paras.slice(0, -1).join('\n\n') : text;
 }
+
+/** Every official URL the answer would show: source cards plus any inline markdown links left in the text. */
+export function shownUrls(text: string, sources: Source[]) {
+  const inline = [...text.matchAll(/\[[^\]]+\]\(([^)\s]+)\)/g)].map((m) => m[1]).filter(isOfficialUrl);
+  return [...new Set([...sources.map((s) => s.url), ...inline])];
+}
+
+/**
+ * Keeps only sources whose link passed the check, renumbers them 1..n in order and rewrites the [n] markers.
+ * Markers of dropped sources and inline links that failed are removed.
+ */
+export function keepVerified(text: string, sources: Source[], verified: (url: string) => boolean) {
+  const kept = sources.filter((s) => verified(s.url));
+  const renumber = new Map(kept.map((s, i) => [s.n, i + 1]));
+  const out = text
+    .replace(/[ \t]?\[(\d{1,2})\](?!\()/g, (_m, n: string) => {
+      const next = renumber.get(Number(n));
+      return next ? ` [${next}]` : '';
+    })
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label: string, url: string) => (isOfficialUrl(url) && verified(url) ? m : label))
+    .replace(/(\[\d+\])(\s*\1)+/g, '$1')
+    .replace(/(\S) {2,}/g, '$1 ')
+    .replace(/ +([.,;:!?।])/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+  return { text: out, sources: kept.map((s, i) => ({ ...s, n: i + 1 })) };
+}
