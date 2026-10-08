@@ -76,7 +76,10 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
 };
 
-export function CategoryIcon({ name, className = 'size-7' }: { name: IconName } & P) {
+export function CategoryIcon({
+  name,
+  className = 'size-7',
+}: { name: IconName } & P) {
   return (
     <svg viewBox="0 0 24 24" {...base} className={className}>
       {PATHS[name]}
@@ -101,8 +104,12 @@ export const MicIcon = make(
     <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
   </>,
 );
-export const StopIcon = make(<rect x="7" y="7" width="10" height="10" rx="2" />);
-export const ExternalIcon = make(<path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" />);
+export const StopIcon = make(
+  <rect x="7" y="7" width="10" height="10" rx="2" />,
+);
+export const ExternalIcon = make(
+  <path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" />,
+);
 export const ShieldIcon = make(
   <>
     <path d="M12 3 5 6v5.5c0 4.4 3 7.9 7 9.5 4-1.6 7-5.1 7-9.5V6z" />
@@ -121,9 +128,15 @@ export const SunIcon = make(
     <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
   </>,
 );
-export const MoonIcon = make(<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" />);
-export const ThumbUpIcon = make(<path d="M7 11v9H4v-9zM7 11l4-7a2 2 0 0 1 2.6 2.3L13 10h5.3a2 2 0 0 1 2 2.4l-1.3 6A2 2 0 0 1 17 20H7" />);
-export const ThumbDownIcon = make(<path d="M17 13V4h3v9zM17 13l-4 7a2 2 0 0 1-2.6-2.3L11 14H5.7a2 2 0 0 1-2-2.4l1.3-6A2 2 0 0 1 7 4h10" />);
+export const MoonIcon = make(
+  <path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" />,
+);
+export const ThumbUpIcon = make(
+  <path d="M7 11v9H4v-9zM7 11l4-7a2 2 0 0 1 2.6 2.3L13 10h5.3a2 2 0 0 1 2 2.4l-1.3 6A2 2 0 0 1 17 20H7" />,
+);
+export const ThumbDownIcon = make(
+  <path d="M17 13V4h3v9zM17 13l-4 7a2 2 0 0 1-2.6-2.3L11 14H5.7a2 2 0 0 1-2-2.4l1.3-6A2 2 0 0 1 7 4h10" />,
+);
 export const ClockIcon = make(
   <>
     <circle cx="12" cy="12" r="8.5" />
@@ -137,6 +150,15 @@ export const SearchIcon = make(
   </>,
 );
 export const ArrowRightIcon = make(<path d="M5 12h14M13 6l6 6-6 6" />);
+export const ArrowUpIcon = make(<path d="M12 19V5M6 11l6-6 6 6" />);
+export const ChevronIcon = make(<path d="M9 6l6 6-6 6" />);
+export const CheckIcon = make(<path d="M5 12l4 4 10-10" />);
+export const MapPinIcon = make(
+  <>
+    <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" />
+    <circle cx="12" cy="10" r="2.3" />
+  </>,
+);
 export const EyeOffIcon = make(
   <>
     <path d="M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 8.5 4.4 9.5 6-.5.8-1.6 2.3-3.2 3.6M6.2 7.6C4.5 8.9 3.2 10.6 2.5 12c1 1.6 4.5 6 9.5 6 1.5 0 2.9-.4 4.1-1" />
@@ -144,18 +166,29 @@ export const EyeOffIcon = make(
   </>,
 );
 
+/** Two overlapping speech bubbles: a question and its answer. */
 export function LogoMark({ className = 'size-9' }: P) {
   return (
-    <svg viewBox="0 0 40 40" className={className} aria-hidden>
-      <path d="M20 2.5 35.2 11.25v17.5L20 37.5 4.8 28.75v-17.5z" fill="var(--brand)" />
+    <svg viewBox="0 0 32 32" className={className} aria-hidden>
+      <defs>
+        <linearGradient id="logo-front" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffa24a" />
+          <stop offset="1" stopColor="#f2557f" />
+        </linearGradient>
+        <linearGradient id="logo-back" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#7b74ff" />
+          <stop offset="1" stopColor="#4338ca" />
+        </linearGradient>
+      </defs>
       <path
-        d="M14.5 15.8a5.5 5.5 0 1 1 7.6 5.1c-1.3.5-2.1 1.4-2.1 2.7v.9"
-        fill="none"
-        stroke="var(--brand-ink)"
-        strokeWidth="2.6"
-        strokeLinecap="round"
+        d="M14 2h10a6 6 0 0 1 6 6v6a6 6 0 0 1-6 6h-1v4l-5-4h-4a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6z"
+        fill="url(#logo-back)"
       />
-      <circle cx="20" cy="29" r="1.7" fill="var(--brand-ink)" />
+      <path
+        d="M8 10h10a6 6 0 0 1 6 6v6a6 6 0 0 1-6 6h-7l-6 3.5V27.4A6 6 0 0 1 2 22v-6a6 6 0 0 1 6-6z"
+        fill="url(#logo-front)"
+        opacity=".95"
+      />
     </svg>
   );
 }

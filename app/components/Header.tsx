@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
-import { LogoMark, MoonIcon, ShieldIcon, SunIcon } from './Icons.tsx';
+import { ChevronIcon, LogoMark, MoonIcon, SunIcon } from './Icons.tsx';
 
 const NAV = [
   { href: '/', label: 'Ask' },
@@ -14,7 +14,10 @@ const NAV = [
 
 function subscribe(cb: () => void) {
   const obs = new MutationObserver(cb);
-  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  obs.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
   return () => obs.disconnect();
 }
 const getTheme = () => document.documentElement.dataset.theme ?? 'light';
@@ -32,41 +35,56 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line/70 bg-page/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-2.5 rounded-lg" aria-label="Ask India home">
-          <LogoMark className="size-7 sm:size-8" />
-          <span className="font-display text-[1.15rem] font-semibold tracking-tight sm:text-[1.35rem]">Ask India</span>
+    <header className="sticky top-0 z-30 border-b border-line/70 bg-page/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:px-6">
+        <Link
+          href="/"
+          className="mr-4 flex items-center gap-2 rounded-lg"
+          aria-label="Ask India home"
+        >
+          <LogoMark className="size-7" />
+          <span className="whitespace-nowrap text-[1.1rem] font-semibold tracking-[-0.02em] text-ink">
+            Ask India
+          </span>
         </Link>
-        <span className="order-last flex w-full items-center justify-center gap-1.5 rounded-full border border-brand/25 bg-brand-tint px-3 py-1 text-xs font-medium text-brand-deep sm:order-none sm:w-auto">
-          <ShieldIcon className="size-3.5" />
-          Independent, not a government website
-        </span>
-        <nav className="ml-auto flex items-center gap-0.5 sm:gap-1" aria-label="Main">
-          {NAV.map((n) => {
-            const active = n.href === '/' ? path === '/' : path.startsWith(n.href);
+        <nav className="flex items-center" aria-label="Main">
+          {NAV.filter((n) => n.href !== '/').map((n) => {
+            const active = path.startsWith(n.href);
             return (
               <Link
                 key={n.href}
                 href={n.href}
                 aria-current={active ? 'page' : undefined}
-                className={`${n.href === '/' ? 'hidden sm:inline-block' : ''} rounded-full px-2.5 py-1.5 text-sm font-medium sm:px-3 transition-colors ${
-                  active ? 'bg-ink text-page' : 'text-ink-soft hover:bg-card hover:text-ink'
+                className={`${n.href === '/about' ? 'hidden sm:block' : ''} rounded-lg px-2.5 py-1.5 text-[0.9375rem] font-medium transition-colors ${
+                  active ? 'text-ink' : 'text-ink-soft hover:text-ink'
                 }`}
               >
                 {n.label}
               </Link>
             );
           })}
-          <button
-            type="button"
-            onClick={toggle}
-            className="grid size-9 place-items-center rounded-full text-ink-soft transition-colors hover:bg-card hover:text-ink"
-            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          >
-            {theme === 'dark' ? <SunIcon className="size-[18px]" /> : <MoonIcon className="size-[18px]" />}
-          </button>
         </nav>
+        <button
+          type="button"
+          onClick={toggle}
+          className="ml-auto grid size-9 place-items-center rounded-lg text-ink-soft transition-colors hover:bg-card-soft hover:text-ink"
+          aria-label={
+            theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+          }
+        >
+          {theme === 'dark' ? (
+            <SunIcon className="size-[18px]" />
+          ) : (
+            <MoonIcon className="size-[18px]" />
+          )}
+        </button>
+        <Link
+          href="/#question"
+          className="hidden h-9 items-center gap-1 rounded-lg bg-brand px-4 text-sm font-medium text-brand-ink transition-colors hover:bg-brand-deep sm:inline-flex"
+        >
+          Ask a question
+          <ChevronIcon className="size-4" />
+        </Link>
       </div>
     </header>
   );

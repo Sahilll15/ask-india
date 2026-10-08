@@ -3,24 +3,25 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { streamingView, type Source } from '../lib/citations.ts';
+import { centreFor, mapsSearchUrl } from '../lib/centres.ts';
 import { CATEGORIES, SAMPLES, type Portal } from '../lib/directory.ts';
 import { redact, removedNotice, type RemovedKind } from '../lib/redact.ts';
 import { hasDevanagari } from '../lib/seo.ts';
-import { Hexagons } from './Hexagons.tsx';
 import {
-  ArrowRightIcon,
+  ArrowUpIcon,
+  ChevronIcon,
   CategoryIcon,
   ClockIcon,
   ExternalIcon,
   EyeOffIcon,
   InfoIcon,
+  MapPinIcon,
   MicIcon,
-  SearchIcon,
-  SendIcon,
   StopIcon,
   ThumbDownIcon,
   ThumbUpIcon,
 } from './Icons.tsx';
+import { Features, PortalStrip, Ribbon } from './HomeSections.tsx';
 import { Markdown } from './Markdown.tsx';
 import { formatCountdown, useQuota } from './useQuota.ts';
 import { MAX_SECONDS, useRecorder } from './useRecorder.ts';
@@ -55,10 +56,18 @@ type Turn = {
 function shortUrl(raw: string) {
   const u = new URL(raw);
   const path = u.pathname.replace(/\/$/, '');
-  return u.hostname.replace(/^www\./, '') + (path.length > 1 ? (path.length > 32 ? `/...${path.slice(-28)}` : path) : '');
+  return (
+    u.hostname.replace(/^www\./, '') +
+    (path.length > 1
+      ? path.length > 32
+        ? `/...${path.slice(-28)}`
+        : path
+      : '')
+  );
 }
 const plain = (t: string) => t.replace(/\s?\[\d{1,2}\]/g, '');
-const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const timeOf = (ms: number) =>
+  new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 export function AskApp() {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -84,7 +93,18 @@ export function AskApp() {
         .filter((t) => t.done?.kind === 'answer')
         .slice(-3)
         .map((t) => ({ q: t.q, a: plain(t.done!.text).slice(0, 2000) }));
-      setTurns((prev) => [...prev, { id, q, removed, status: 'streaming', stage: 'searching', domains: [], text: '' }]);
+      setTurns((prev) => [
+        ...prev,
+        {
+          id,
+          q,
+          removed,
+          status: 'streaming',
+          stage: 'searching',
+          domains: [],
+          text: '',
+        },
+      ]);
       setInput('');
       setBusy(true);
       const ctrl = new AbortController();
@@ -111,11 +131,17 @@ export function AskApp() {
             }));
             return;
           }
-          patch(id, () => ({ status: 'error', error: json.error ?? 'Something went wrong. Try again.', text: '' }));
+          patch(id, () => ({
+            status: 'error',
+            error: json.error ?? 'Something went wrong. Try again.',
+            text: '',
+          }));
           return;
         }
 
-        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        const reader = res.body
+          .pipeThrough(new TextDecoderStream())
+          .getReader();
         let buf = '';
         let finished = false;
         for (;;) {
@@ -128,10 +154,19 @@ export function AskApp() {
             buf = buf.slice(nl + 1);
             if (!lineText) continue;
             const ev = JSON.parse(lineText);
-            if (ev.t === 'meta') patch(id, (t) => ({ removed: [...new Set([...t.removed, ...(ev.removed ?? [])])] }));
-            else if (ev.t === 'status') patch(id, (t) => ({ stage: ev.stage, domains: ev.domains ?? t.domains }));
-            else if (ev.t === 'reset') patch(id, () => ({ stage: 'searching', text: '', domains: [] }));
-            else if (ev.t === 'delta') patch(id, (t) => ({ stage: 'writing', text: t.text + ev.text }));
+            if (ev.t === 'meta')
+              patch(id, (t) => ({
+                removed: [...new Set([...t.removed, ...(ev.removed ?? [])])],
+              }));
+            else if (ev.t === 'status')
+              patch(id, (t) => ({
+                stage: ev.stage,
+                domains: ev.domains ?? t.domains,
+              }));
+            else if (ev.t === 'reset')
+              patch(id, () => ({ stage: 'searching', text: '', domains: [] }));
+            else if (ev.t === 'delta')
+              patch(id, (t) => ({ stage: 'writing', text: t.text + ev.text }));
             else if (ev.t === 'done') {
               finished = true;
               patch(id, () => ({ status: 'done', done: ev, text: '' }));
@@ -142,10 +177,20 @@ export function AskApp() {
             }
           }
         }
-        if (!finished) patch(id, () => ({ status: 'error', error: 'The answer was cut off. Try again.', text: '' }));
+        if (!finished)
+          patch(id, () => ({
+            status: 'error',
+            error: 'The answer was cut off. Try again.',
+            text: '',
+          }));
       } catch (e) {
         if ((e as Error).name !== 'AbortError') {
-          patch(id, () => ({ status: 'error', error: 'Could not reach Ask India. Check your connection and try again.', text: '' }));
+          patch(id, () => ({
+            status: 'error',
+            error:
+              'Could not reach Ask India. Check your connection and try again.',
+            text: '',
+          }));
         }
       } finally {
         setBusy(false);
@@ -169,7 +214,10 @@ export function AskApp() {
 
   const lastId = turns.at(-1)?.id;
   useEffect(() => {
-    if (lastId) document.getElementById(`turn-${lastId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (lastId)
+      document
+        .getElementById(`turn-${lastId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [lastId]);
 
   const recorder = useRecorder(
@@ -186,176 +234,238 @@ export function AskApp() {
   async function vote(id: string, v: 'up' | 'down') {
     patch(id, () => ({ vote: v }));
     try {
-      await fetch('/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ vote: v }) });
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ vote: v }),
+      });
     } catch {}
   }
 
-  return (
+  const onHero = !turns.length;
+
+  const form = (
     <>
-      <section className="relative overflow-hidden">
-        <Hexagons className="pointer-events-none absolute -right-24 -top-16 w-[520px] max-w-none opacity-40 sm:-right-10 sm:opacity-90" />
-        <Hexagons className="pointer-events-none absolute -bottom-24 -left-28 w-[420px] max-w-none rotate-180 opacity-70" />
-
-        <div className="relative mx-auto max-w-3xl px-4 pb-10 pt-10 sm:px-6 sm:pt-16">
-          <div className={turns.length ? 'mb-6' : 'mb-8 text-center'}>
-            <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-card/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-brand shadow-card sm:text-xs sm:tracking-[0.14em]">
-              <SearchIcon className="size-3.5" />
-              Answers from gov.in and nic.in pages only
+      {spent && quota && (
+        <div
+          role="status"
+          className="mb-3 flex items-start gap-3 rounded-2xl bg-warn-bg px-4 py-3 text-left text-sm text-warn animate-rise"
+        >
+          <ClockIcon className="mt-0.5 size-5 shrink-0" />
+          {quota.dailyExhausted ? (
+            <p>
+              Ask India has used up its question budget for today. Try again
+              tomorrow. The guides and directory still work.
             </p>
-            <h1
-              className={`font-display font-semibold tracking-tight text-ink transition-all ${
-                turns.length ? 'text-3xl' : 'text-[2.4rem] leading-[1.05] sm:text-6xl'
-              }`}
-            >
-              <span className="sr-only">Ask India: </span>
-              Ask how to get it done.
-            </h1>
-            {!turns.length && (
-              <>
-                <p className="mt-3 text-xl text-ink-soft" lang="hi">
-                  सरकारी काम का सवाल पूछिए, आधिकारिक स्रोतों से जवाब पाइए।
-                </p>
-                <p className="mx-auto mt-4 max-w-xl text-base text-ink-soft">
-                  PAN, Aadhaar, passport, ITR, driving licence and more. Short steps, the documents you need, and links to the exact
-                  official page. In English, हिंदी or Hinglish.
-                </p>
-              </>
-            )}
-          </div>
-
-          {turns.length > 0 && (
-            <ol className="mb-6 space-y-8" aria-live="polite">
-              {turns.map((t) => (
-                <TurnView key={t.id} turn={t} onVote={vote} onRetry={() => ask(t.q)} canRetry={!disabled} />
-              ))}
-            </ol>
-          )}
-
-          {spent && quota && (
-            <div role="status" className="mb-3 flex items-start gap-3 rounded-2xl border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn animate-rise">
-              <ClockIcon className="mt-0.5 size-5 shrink-0" />
-              {quota.dailyExhausted ? (
-                <p>Ask India has used up its question budget for today. Try again tomorrow. The directory still works.</p>
-              ) : (
-                <p>
-                  <span className="font-semibold">
-                    You&apos;ve reached the hourly limit. It resets at {quota.resetAt ? timeOf(quota.resetAt) : 'the top of the hour'}
-                  </span>
-                  {quota.resetAt && <span className="tabular-nums"> (in {formatCountdown(quota.resetAt - now)})</span>}. The directory
-                  still works.
-                </p>
+          ) : (
+            <p>
+              <span className="font-semibold">
+                You&apos;ve reached the hourly limit. It resets at{' '}
+                {quota.resetAt ? timeOf(quota.resetAt) : 'the top of the hour'}
+              </span>
+              {quota.resetAt && (
+                <span className="tabular-nums">
+                  {' '}
+                  (in {formatCountdown(quota.resetAt - now)})
+                </span>
               )}
-            </div>
+              . The guides and directory still work.
+            </p>
           )}
+        </div>
+      )}
 
-          <form
-            onSubmit={(e) => {
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void ask(input);
+        }}
+        className={`rounded-2xl border bg-card shadow-[var(--shadow)] transition-[border-color,box-shadow] ${
+          spent
+            ? 'border-line opacity-70'
+            : 'border-line-strong focus-within:border-brand/60 focus-within:ring-4 focus-within:ring-brand/10'
+        }`}
+      >
+        <label htmlFor="question" className="sr-only">
+          Your question
+        </label>
+        <textarea
+          id="question"
+          ref={textRef}
+          value={input}
+          maxLength={MAX_LEN}
+          disabled={spent}
+          rows={2}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (
+              e.key === 'Enter' &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
               e.preventDefault();
               void ask(input);
-            }}
-            className={`rounded-3xl border bg-card p-2 shadow-lift transition-colors ${
-              spent ? 'border-line opacity-70' : 'border-line-strong focus-within:border-brand'
+            }
+          }}
+          placeholder={
+            turns.length
+              ? 'Ask a follow-up'
+              : 'Ask anything about a government service'
+          }
+          className="field-sizing-content block max-h-48 min-h-[4.5rem] w-full scroll-mt-28 resize-none bg-transparent px-4 pb-1 pt-4 text-[1.0625rem] leading-6 text-ink outline-none placeholder:text-ink-faint disabled:cursor-not-allowed"
+        />
+        <div className="flex items-center gap-2 px-2.5 pb-2.5">
+          <button
+            type="button"
+            disabled={spent || recorder.state === 'transcribing'}
+            onClick={() =>
+              recorder.state === 'recording'
+                ? recorder.stop()
+                : recorder.start()
+            }
+            className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+              recorder.state === 'recording'
+                ? 'recording bg-brand text-brand-ink'
+                : 'text-ink-soft hover:bg-card-soft hover:text-ink'
             }`}
+            aria-label={
+              recorder.state === 'recording'
+                ? 'Stop recording'
+                : 'Speak your question, up to 30 seconds'
+            }
           >
-            <label htmlFor="question" className="sr-only">
-              Your question
-            </label>
-            <textarea
-              id="question"
-              ref={textRef}
-              value={input}
-              maxLength={MAX_LEN}
-              disabled={spent}
-              rows={2}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void ask(input);
-                }
-              }}
-              placeholder={turns.length ? 'Ask a follow-up question' : 'e.g. How do I update my address in Aadhaar?'}
-              className="block max-h-48 min-h-[3.5rem] w-full resize-none bg-transparent px-3 py-2.5 text-lg text-ink outline-none placeholder:text-ink-faint disabled:cursor-not-allowed"
-            />
-            <div className="flex items-center gap-2 px-1 pb-1">
-              <button
-                type="button"
-                disabled={spent || recorder.state === 'transcribing'}
-                onClick={() => (recorder.state === 'recording' ? recorder.stop() : recorder.start())}
-                className={`flex h-10 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors disabled:opacity-50 ${
-                  recorder.state === 'recording'
-                    ? 'recording border-brand bg-brand text-brand-ink'
-                    : 'border-line text-ink-soft hover:border-brand hover:text-brand'
-                }`}
-                aria-label={recorder.state === 'recording' ? 'Stop recording' : 'Speak your question, up to 30 seconds'}
-              >
-                {recorder.state === 'recording' ? <StopIcon className="size-4" /> : <MicIcon className="size-4" />}
-                <span className="tabular-nums">
-                  {recorder.state === 'recording'
-                    ? `${formatCountdown(recorder.seconds * 1000)} / 0:${MAX_SECONDS}`
-                    : recorder.state === 'transcribing'
-                      ? 'Listening back...'
-                      : 'Speak'}
-                </span>
-              </button>
-              {input.length > 400 && <span className="text-xs tabular-nums text-ink-faint">{input.length}/{MAX_LEN}</span>}
-              <button
-                type="submit"
-                disabled={disabled || !input.trim()}
-                className="ml-auto flex h-10 items-center gap-2 rounded-full bg-brand px-5 text-sm font-semibold text-brand-ink transition-all hover:bg-brand-deep active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {busy ? 'Answering...' : 'Ask'}
-                <SendIcon className="size-4" />
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2 text-sm text-ink-soft">
-            <p className="flex items-center gap-1.5">
-              <EyeOffIcon className="size-4 text-brand" />
-              {preview.length ? (
-                <span className="font-medium text-brand-deep">We will remove before sending: {preview.join(', ')}</span>
-              ) : (
-                <span>Aadhaar, PAN, phone and bank numbers are removed before anything is sent.</span>
-              )}
-            </p>
-            {quota && !spent && (
-              <p className="tabular-nums">
-                <span className="font-semibold text-ink">{quota.remaining}</span> question{quota.remaining === 1 ? '' : 's'} left this hour
-              </p>
+            {recorder.state === 'recording' ? (
+              <StopIcon className="size-4" />
+            ) : (
+              <MicIcon className="size-[18px]" />
             )}
-          </div>
-          {recorder.error && (
-            <p role="alert" className="mt-2 px-2 text-sm text-warn">
-              {recorder.error}
-            </p>
+            <span className="tabular-nums">
+              {recorder.state === 'recording'
+                ? `${formatCountdown(recorder.seconds * 1000)} / 0:${MAX_SECONDS}`
+                : recorder.state === 'transcribing'
+                  ? 'Listening...'
+                  : 'Speak'}
+            </span>
+          </button>
+          <span
+            className={`hidden min-w-0 items-center gap-1.5 truncate text-xs sm:flex ${preview.length ? 'font-medium text-brand' : 'text-ink-faint'}`}
+          >
+            <EyeOffIcon className="size-3.5 shrink-0" />
+            {preview.length
+              ? `We will hide ${preview.join(', ')} before sending`
+              : 'Personal numbers are hidden before sending'}
+          </span>
+          {input.length > 400 && (
+            <span className="ml-auto text-xs tabular-nums text-ink-faint">
+              {input.length}/{MAX_LEN}
+            </span>
           )}
+          <button
+            type="submit"
+            disabled={disabled || !input.trim()}
+            aria-label={busy ? 'Answering' : 'Ask'}
+            className={`${input.length > 400 ? '' : 'ml-auto'} grid size-9 shrink-0 place-items-center rounded-full bg-brand text-brand-ink transition-colors hover:bg-brand-deep active:scale-95 disabled:cursor-not-allowed disabled:bg-line-strong disabled:text-ink-faint`}
+          >
+            {busy ? (
+              <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              <ArrowUpIcon className="size-[18px]" />
+            )}
+          </button>
+        </div>
+      </form>
 
-          {!turns.length && (
-            <div className="mt-7 text-center">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Try a sample</p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {SAMPLES.map((s) => (
-                  <Chip key={s} text={s} disabled={disabled} onClick={() => ask(s)} />
+      {quota && !spent && quota.remaining <= 3 && (
+        <p className="mt-2 text-sm tabular-nums text-ink-faint">
+          {quota.remaining} question{quota.remaining === 1 ? '' : 's'} left this
+          hour.
+        </p>
+      )}
+      {recorder.error && (
+        <p role="alert" className="mt-2 text-sm font-medium text-warn">
+          {recorder.error}
+        </p>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {onHero ? (
+        <>
+          <section className="relative overflow-hidden border-b border-line">
+            <Ribbon />
+            <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pb-24 sm:pt-24">
+              <p className="text-sm font-medium text-ink-soft">
+                Free to use. Ask in English, <span lang="hi">हिंदी</span> or
+                Hinglish.
+              </p>
+              <h1 className="two-tone mt-5 max-w-3xl text-balance text-[2.2rem] font-medium leading-[1.08] tracking-[-0.035em] text-ink sm:text-[3.6rem]">
+                <span className="sr-only">Ask India: </span>
+                <span>Government work, made simple. </span>
+                <span>
+                  Ask about PAN, Aadhaar, passport or any service, and get clear
+                  steps from official websites.
+                </span>
+              </h1>
+              <div className="mt-9 max-w-2xl">{form}</div>
+              <div className="mt-4 flex max-w-2xl flex-wrap gap-2">
+                {SAMPLES.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => ask(q)}
+                    lang={hasDevanagari(q) ? 'hi' : undefined}
+                    className="rounded-full border border-line bg-card/80 px-3.5 py-1.5 text-sm text-ink-soft backdrop-blur transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {q}
+                  </button>
                 ))}
               </div>
             </div>
-          )}
-        </div>
-      </section>
+          </section>
+          <PortalStrip />
+          <Features />
+        </>
+      ) : (
+        <section className="mx-auto max-w-3xl px-4 pb-16 pt-10 sm:px-6">
+          <h1 className="sr-only">Ask India</h1>
+          <ol
+            className="mb-10 space-y-12 [&>li+li]:border-t [&>li+li]:border-line [&>li+li]:pt-12"
+            aria-live="polite"
+          >
+            {turns.map((t) => (
+              <TurnView
+                key={t.id}
+                turn={t}
+                onVote={vote}
+                onRetry={() => ask(t.q)}
+                canRetry={!disabled}
+              />
+            ))}
+          </ol>
+          <div className="sticky bottom-4">{form}</div>
+        </section>
+      )}
 
-      <section className="mx-auto max-w-6xl px-4 sm:px-6" aria-labelledby="topics">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 id="topics" className="font-display text-2xl font-semibold tracking-tight">
-              Browse by topic
-            </h2>
-            <p className="text-ink-soft" lang="hi">
-              विषय के अनुसार देखें
-            </p>
-          </div>
-          <Link href="/directory" className="flex items-center gap-1 text-sm font-semibold text-brand hover:underline">
-            Full directory <ArrowRightIcon className="size-4" />
+      <section
+        className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28"
+        aria-labelledby="topics"
+      >
+        <div className="mb-10 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <h2
+            id="topics"
+            className="two-tone max-w-2xl text-[1.9rem] font-medium leading-[1.12] tracking-[-0.03em] sm:text-[2.6rem]"
+          >
+            <span>Browse by topic. </span>
+            <span>Common questions for each service.</span>
+          </h2>
+          <Link
+            href="/directory"
+            className="inline-flex items-center gap-1 text-[0.9375rem] font-medium text-brand hover:text-brand-deep"
+          >
+            All official websites <ChevronIcon className="size-4" />
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -368,40 +478,48 @@ export function AskApp() {
                 aria-expanded={on}
                 aria-controls="topic-panel"
                 onClick={() => setCategory(on ? null : c.id)}
-                className={`group flex min-h-32 flex-col items-start justify-between gap-3 rounded-3xl border p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:shadow-lift ${
-                  on ? 'border-brand bg-brand text-brand-ink' : 'border-line bg-card text-ink'
+                className={`flex flex-col items-start gap-6 rounded-2xl border bg-card p-4 text-left transition-[border-color,box-shadow] ${
+                  on
+                    ? 'border-brand ring-4 ring-brand/10'
+                    : 'border-line hover:border-line-strong hover:shadow-[var(--shadow)]'
                 }`}
               >
                 <span
-                  className={`grid size-11 place-items-center rounded-2xl transition-colors ${
-                    on ? 'bg-brand-ink/15' : 'bg-brand-tint text-brand group-hover:bg-brand-wash'
-                  }`}
+                  className={`grid size-9 place-items-center rounded-lg ${on ? 'bg-brand text-brand-ink' : 'bg-brand-tint text-brand'}`}
                 >
-                  <CategoryIcon name={c.icon} className="size-6" />
+                  <CategoryIcon name={c.icon} className="size-5" />
                 </span>
-                <span>
-                  <span className="block font-semibold leading-tight">{c.en}</span>
-                  <span lang="hi" className={`block text-sm ${on ? 'opacity-85' : 'text-ink-soft'}`}>
-                    {c.hi}
-                  </span>
+                <span className="text-[0.9375rem] font-medium leading-tight tracking-tight text-ink">
+                  {c.en}
                 </span>
               </button>
             );
           })}
         </div>
         {selected && (
-          <div id="topic-panel" className="mt-4 rounded-3xl border border-line bg-card p-5 shadow-card animate-rise">
-            <p className="mb-3 text-sm font-semibold text-ink">
-              Common questions about {selected.en.toLowerCase()} <span lang="hi" className="font-normal text-ink-soft">· {selected.hi}</span>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {selected.questions.map((q) => (
-                <Chip key={q} text={q} disabled={disabled} onClick={() => ask(q)} />
-              ))}
+          <div
+            id="topic-panel"
+            className="mt-4 rounded-2xl border border-line bg-card px-5 py-3 shadow-[var(--shadow)] animate-rise"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2 pt-1">
+              <p className="font-medium text-ink">
+                {selected.en}{' '}
+                <span lang="hi" className="ml-1 font-normal text-ink-faint">
+                  {selected.hi}
+                </span>
+              </p>
+              <Link
+                href={`/directory#${selected.id}`}
+                className="text-sm font-medium text-brand hover:text-brand-deep"
+              >
+                Official websites
+              </Link>
             </div>
-            <Link href={`/directory#${selected.id}`} className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand hover:underline">
-              Official portals for this topic <ArrowRightIcon className="size-4" />
-            </Link>
+            <QuestionList
+              items={selected.questions}
+              disabled={disabled}
+              onAsk={ask}
+            />
           </div>
         )}
       </section>
@@ -409,36 +527,111 @@ export function AskApp() {
   );
 }
 
-function Chip({ text, onClick, disabled }: { text: string; onClick: () => void; disabled: boolean }) {
+function QuestionList({
+  items,
+  onAsk,
+  disabled,
+}: {
+  items: string[];
+  onAsk: (q: string) => void;
+  disabled: boolean;
+}) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      lang={hasDevanagari(text) ? 'hi' : undefined}
-      className="rounded-full border border-line-strong bg-card px-4 py-2 text-sm text-ink transition-all hover:-translate-y-0.5 hover:border-brand hover:text-brand disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:border-line-strong disabled:hover:text-ink"
-    >
-      {text}
-    </button>
+    <ul className="divide-y divide-line">
+      {items.map((q) => (
+        <li key={q}>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onAsk(q)}
+            lang={hasDevanagari(q) ? 'hi' : undefined}
+            className="group flex w-full items-center justify-between gap-3 py-3.5 text-left text-ink transition-colors hover:text-brand disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {q}
+            <ChevronIcon className="size-4 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id: string, v: 'up' | 'down') => void; onRetry: () => void; canRetry: boolean }) {
+function NearbyCentre({
+  question,
+  answer,
+}: {
+  question: string;
+  answer: string;
+}) {
+  const centre = centreFor(question, answer);
+  if (!centre) return null;
+  return (
+    <div className="mt-5 rounded-2xl bg-card-soft p-4 sm:p-5">
+      <p className="font-semibold text-ink">Want to go in person?</p>
+      <p className="mt-0.5 text-sm text-ink-soft">
+        Find the nearest {centre.name}.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={mapsSearchUrl(centre)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand px-4 text-sm font-medium text-brand-ink transition-colors hover:bg-brand-deep"
+        >
+          <MapPinIcon className="size-4" />
+          Find near me
+        </a>
+        {centre.official && (
+          <a
+            href={centre.official.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-medium text-ink transition-colors hover:border-brand hover:text-brand"
+          >
+            {centre.official.label}
+            <ExternalIcon className="size-3.5" />
+          </a>
+        )}
+      </div>
+      <p className="mt-3 text-xs text-ink-faint">
+        Find near me opens Google Maps, which is not an official source. Check
+        timings before you go.
+      </p>
+    </div>
+  );
+}
+
+function TurnView({
+  turn,
+  onVote,
+  onRetry,
+  canRetry,
+}: {
+  turn: Turn;
+  onVote: (id: string, v: 'up' | 'down') => void;
+  onRetry: () => void;
+  canRetry: boolean;
+}) {
   const d = turn.done;
   const anchor = `src-${turn.id.slice(0, 8)}`;
   return (
     <li id={`turn-${turn.id}`} className="scroll-mt-24 animate-rise">
-      <div className="mb-3 flex flex-col items-end gap-1">
-        <p className="max-w-[85%] rounded-3xl rounded-br-md bg-ink px-4 py-2.5 text-page">{turn.q}</p>
+      <div className="mb-6">
+        <h2
+          className="text-[1.6rem] font-medium leading-tight tracking-[-0.025em] text-ink"
+          lang={hasDevanagari(turn.q) ? 'hi' : undefined}
+        >
+          {turn.q}
+        </h2>
         {turn.removed.length > 0 && (
-          <p className="flex items-center gap-1 text-xs font-medium text-brand-deep">
+          <p className="mt-2 flex items-center gap-1 text-xs font-medium text-brand">
             <EyeOffIcon className="size-3.5" />
             {removedNotice(turn.removed)}
           </p>
         )}
       </div>
 
-      <div className="rounded-3xl border border-line bg-card p-5 shadow-card sm:p-6">
+      <div>
         {turn.status === 'streaming' && turn.stage !== 'writing' && (
           <div aria-busy="true">
             <p className="mb-4 flex items-center gap-2 text-sm font-medium text-ink-soft">
@@ -458,13 +651,22 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
           </div>
         )}
 
-        {turn.status === 'streaming' && turn.stage === 'writing' && <Markdown text={streamingView(turn.text)} anchor={anchor} streaming />}
+        {turn.status === 'streaming' && turn.stage === 'writing' && (
+          <Markdown text={streamingView(turn.text)} anchor={anchor} streaming />
+        )}
 
         {turn.status === 'error' && (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-3">
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3"
+          >
             <p className="text-warn">{turn.error}</p>
             {canRetry && (
-              <button type="button" onClick={onRetry} className="rounded-full border border-line-strong px-4 py-1.5 text-sm font-medium hover:border-brand hover:text-brand">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="rounded-full border border-line-strong px-4 py-1.5 text-sm font-medium hover:border-brand hover:text-brand"
+              >
                 Try again
               </button>
             )}
@@ -474,8 +676,14 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
         {d?.kind === 'answer' && (
           <>
             <Markdown text={d.text} anchor={anchor} />
-            {d.sourcesFrom === 'search' && <p className="mb-2 mt-5 text-sm font-semibold text-ink-soft">Sources</p>}
-            <div className={`${d.sourcesFrom === 'search' ? '' : 'mt-5 '}grid gap-2 sm:grid-cols-2`}>
+            {d.sourcesFrom === 'search' && (
+              <p className="mb-2 mt-5 text-sm font-semibold text-ink-soft">
+                Sources
+              </p>
+            )}
+            <div
+              className={`${d.sourcesFrom === 'search' ? '' : 'mt-5 '}grid gap-2 sm:grid-cols-2`}
+            >
               {d.sources.map((s) => (
                 <a
                   key={s.n}
@@ -483,11 +691,15 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                   href={s.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="source-card group flex items-start gap-3 rounded-2xl border border-line bg-card p-3 transition-colors hover:border-brand"
+                  className="source-card group flex min-w-0 items-start gap-3 rounded-2xl bg-card-soft p-3 transition-colors hover:bg-brand-tint"
                 >
-                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand-wash text-xs font-bold text-brand-deep">{s.n}</span>
+                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-brand-wash text-xs font-bold text-brand-deep">
+                    {s.n}
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="line-clamp-2 text-sm font-medium leading-snug text-ink group-hover:text-brand">{s.title}</span>
+                    <span className="line-clamp-2 text-sm font-medium leading-snug text-ink group-hover:text-brand">
+                      {s.title}
+                    </span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-ink-faint">
                       <span className="truncate">{shortUrl(s.url)}</span>
                       <ExternalIcon className="size-3" />
@@ -501,20 +713,27 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                   href={portal.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group flex items-start gap-3 rounded-2xl border border-dashed border-line-strong bg-card p-3 transition-colors hover:border-brand"
+                  className="group flex min-w-0 items-start gap-3 rounded-2xl bg-card-soft p-3 transition-colors hover:bg-brand-tint"
                 >
                   <span className="grid size-6 shrink-0 place-items-center rounded-md bg-good-bg text-good">
                     <ExternalIcon className="size-3.5" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[0.7rem] font-semibold uppercase tracking-wide text-ink-faint">Official portal</span>
-                    <span className="line-clamp-2 text-sm font-medium leading-snug text-ink group-hover:text-brand">{portal.name}</span>
-                    <span className="mt-0.5 block truncate text-xs text-ink-faint">{shortUrl(portal.url)}</span>
+                    <span className="block text-xs font-semibold text-ink-faint">
+                      Official portal
+                    </span>
+                    <span className="line-clamp-2 text-sm font-medium leading-snug text-ink group-hover:text-brand">
+                      {portal.name}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-ink-faint">
+                      {shortUrl(portal.url)}
+                    </span>
                   </span>
                 </a>
               ))}
             </div>
-            <p className="mt-4 flex items-start gap-2 rounded-2xl bg-brand-tint px-3 py-2 text-sm text-brand-deep">
+            <NearbyCentre question={turn.q} answer={d.text} />
+            <p className="mt-4 flex items-start gap-2 text-sm text-ink-faint">
               <InfoIcon className="mt-0.5 size-4 shrink-0" />
               {d.footer}
             </p>
@@ -523,11 +742,21 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
 
         {d && d.kind !== 'answer' && (
           <div>
-            <p className={`text-lg ${d.kind === 'nosource' ? 'font-semibold text-ink' : 'text-ink'}`}>{d.text}</p>
+            <p
+              className={`text-lg ${d.kind === 'nosource' ? 'font-semibold text-ink' : 'text-ink'}`}
+            >
+              {d.text}
+            </p>
             {d.related.length > 0 && (
               <>
-                {d.kind === 'decline' && <p className="mb-2 mt-4 text-sm text-ink-soft">Official places for procedures:</p>}
-                <ul className={`grid gap-2 sm:grid-cols-3 ${d.kind === 'nosource' ? 'mt-3' : ''}`}>
+                {d.kind === 'decline' && (
+                  <p className="mb-2 mt-4 text-sm text-ink-soft">
+                    Official places for procedures:
+                  </p>
+                )}
+                <ul
+                  className={`grid gap-2 sm:grid-cols-3 ${d.kind === 'nosource' ? 'mt-3' : ''}`}
+                >
                   {d.related.map((p) => (
                     <li key={p.url}>
                       <a
@@ -537,7 +766,9 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                         className="flex h-full flex-col rounded-2xl border border-line p-3 text-sm transition-colors hover:border-brand"
                       >
                         <span className="font-semibold text-ink">{p.name}</span>
-                        <span className="text-xs text-ink-faint">{new URL(p.url).hostname.replace(/^www\./, '')}</span>
+                        <span className="text-xs text-ink-faint">
+                          {new URL(p.url).hostname.replace(/^www\./, '')}
+                        </span>
                       </a>
                     </li>
                   ))}
@@ -545,7 +776,11 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
               </>
             )}
             {d.kind === 'nosource' && canRetry && (
-              <button type="button" onClick={onRetry} className="mt-4 rounded-full border border-line-strong px-4 py-1.5 text-sm font-medium hover:border-brand hover:text-brand">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-4 rounded-full border border-line-strong px-4 py-1.5 text-sm font-medium hover:border-brand hover:text-brand"
+              >
                 Try again
               </button>
             )}
@@ -555,11 +790,16 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
         {d && d.kind !== 'decline' && (
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3 text-sm text-ink-faint">
             {d.cached && (
-              <span className="rounded-full bg-good-bg px-2.5 py-0.5 text-xs font-semibold text-good" title="Served from a recent identical question. Did not use your hourly quota.">
+              <span
+                className="rounded-full bg-good-bg px-2.5 py-0.5 text-xs font-semibold text-good"
+                title="Served from a recent identical question. Did not use your hourly quota."
+              >
                 Cached answer, did not use your quota
               </span>
             )}
-            <span className="ml-auto">{turn.vote ? 'Thanks for the feedback.' : 'Was this useful?'}</span>
+            <span className="ml-auto">
+              {turn.vote ? 'Thanks for the feedback.' : 'Was this useful?'}
+            </span>
             {(['up', 'down'] as const).map((v) => (
               <button
                 key={v}
@@ -569,10 +809,16 @@ function TurnView({ turn, onVote, onRetry, canRetry }: { turn: Turn; onVote: (id
                 aria-label={v === 'up' ? 'Helpful' : 'Not helpful'}
                 aria-pressed={turn.vote === v}
                 className={`grid size-8 place-items-center rounded-full border transition-colors disabled:cursor-default ${
-                  turn.vote === v ? 'border-brand bg-brand text-brand-ink' : 'border-line hover:border-brand hover:text-brand disabled:opacity-40'
+                  turn.vote === v
+                    ? 'border-brand bg-brand text-brand-ink'
+                    : 'border-line hover:border-brand hover:text-brand disabled:opacity-40'
                 }`}
               >
-                {v === 'up' ? <ThumbUpIcon className="size-4" /> : <ThumbDownIcon className="size-4" />}
+                {v === 'up' ? (
+                  <ThumbUpIcon className="size-4" />
+                ) : (
+                  <ThumbDownIcon className="size-4" />
+                )}
               </button>
             ))}
           </div>

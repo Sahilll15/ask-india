@@ -39,10 +39,10 @@ export default function GuidesPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 pt-10 sm:px-6 sm:pt-14">
       <JsonLd data={jsonLd} />
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
+      <p className="text-sm font-semibold text-ink-soft">
         Guides · <span lang="hi">मार्गदर्शिकाएं</span>
       </p>
-      <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">Step-by-step guides</h1>
+      <h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">Step-by-step guides</h1>
       <p className="mt-4 text-lg text-ink-soft">
         Each guide is written from the official gov.in or nic.in pages it links to, and lists those pages as sources. Rules and fees change, so
         confirm on the official page before you act. Last checked: {LAST_CHECKED_LABEL}.

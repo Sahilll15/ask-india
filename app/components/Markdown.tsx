@@ -82,7 +82,7 @@ export function Markdown({ text, anchor, streaming = false }: { text: string; an
       {bs.map((b, i) => {
         if (b.type === 'h') {
           return (
-            <h4 key={i} className="pt-1 text-xs font-bold uppercase tracking-[0.14em] text-brand-deep">
+            <h4 key={i} className="pt-2 text-base font-bold text-ink">
               {b.text}
             </h4>
           );

@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { CATEGORIES, FEATURED_PORTALS, PORTALS } from '../lib/directory.ts';
 import { displayDomain } from '../lib/domains.ts';
 import { ArrowRightIcon, CategoryIcon, ExternalIcon } from '../components/Icons.tsx';
-import { Hexagons } from '../components/Hexagons.tsx';
 import { JsonLd } from '../components/JsonLd.tsx';
 import { GUIDES, guideForQuestion } from '../guides/data.ts';
 import { SITE_URL, WEBSITE_ID, breadcrumbs, hasDevanagari, pageMetadata } from '../lib/seo.ts';
@@ -47,13 +46,12 @@ const jsonLd = {
 export default function DirectoryPage() {
   return (
     <div className="relative overflow-x-clip">
-      <Hexagons className="pointer-events-none absolute -right-24 -top-10 w-[460px] max-w-none opacity-80" />
       <div className="relative mx-auto max-w-6xl px-4 pt-10 sm:px-6 sm:pt-14">
         <JsonLd data={jsonLd} />
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
+        <p className="text-sm font-semibold text-ink-soft">
           Directory · <span lang="hi">निर्देशिका</span>
         </p>
-        <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">Where to start</h1>
+        <h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">Where to start</h1>
         <p className="mt-3 max-w-2xl text-lg text-ink-soft">
           Pick a topic to ask a common question, or go straight to the official portal. Every link below points to a gov.in or nic.in site and was
           checked to load.
@@ -141,7 +139,7 @@ export default function DirectoryPage() {
         </div>
 
         <section className="mt-14" aria-labelledby="portals">
-          <h2 id="portals" className="font-display text-3xl font-semibold tracking-tight">
+          <h2 id="portals" className="text-3xl font-bold tracking-tight">
             Go straight to a service
           </h2>
           <p lang="hi" className="text-ink-soft">
