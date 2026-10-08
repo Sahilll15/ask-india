@@ -6,9 +6,10 @@ import { cleanUrl, displayDomain, isOfficialUrl, SEARCH_DOMAINS } from '../../li
 import { detectLang, FOOTER, NOT_FOUND, type Lang } from '../../lib/lang.ts';
 import { redact, type RemovedKind } from '../../lib/redact.ts';
 import { answerCache, cacheKey, counters } from '../../server/cache.ts';
-import { bad, readJson, upstreamError } from '../../server/http.ts';
+import { bad, readJson } from '../../server/http.ts';
 import { linkChecker } from '../../server/linkcheck.ts';
 import { MAX_SEARCHES, retrySearchBudget } from '../../server/search-budget.ts';
+import { askGroq, GROQ_MODEL, groqConfigured, retryableUpstream } from '../../server/groq.ts';
 import { estimateCost, openai, TEXT_MODEL } from '../../server/openai.ts';
 import { instructions } from '../../server/prompts.ts';
 import { DAILY_QUESTIONS, LIMITS, LimiterUnavailable, budgetSpent, check, limiterBusy, peek, questionBudget, tooMany } from '../../server/ratelimit.ts';
@@ -134,35 +135,51 @@ export async function POST(req: Request) {
     ...input.slice(0, -1),
     { role: 'user', content: `${question}\n\nSearch for: ${searchHint(question)}` },
   ];
-  const request = (forced: boolean, maxSearches = MAX_SEARCHES) =>
-    openai().responses.create({
-      model: TEXT_MODEL,
-      instructions: instructions(lang, new Date().toISOString().slice(0, 10)),
-      input: forced ? retryInput : input,
-      tools: [
-        {
-          type: 'web_search',
-          filters: { allowed_domains: SEARCH_DOMAINS },
-          search_context_size: 'low',
-          user_location: { type: 'approximate', country: 'IN' },
-        },
-      ],
-      ...(forced ? { tool_choice: 'required' as const } : {}),
-      // Supported by the API but missing from this SDK version's create params type.
-      ...({ max_tool_calls: maxSearches } as object),
-      include: ['web_search_call.action.sources'],
-      reasoning: { effort: 'low' },
-      max_output_tokens: 2500,
-      store: false,
-      stream: true,
-    });
+  const ctrl = new AbortController();
+  const brief = instructions(lang, new Date().toISOString().slice(0, 10));
+  const openaiRequest = (forced: boolean, maxSearches: number) =>
+    openai().responses.create(
+      {
+        model: TEXT_MODEL,
+        instructions: brief,
+        input: forced ? retryInput : input,
+        tools: [
+          {
+            type: 'web_search',
+            filters: { allowed_domains: SEARCH_DOMAINS },
+            search_context_size: 'low',
+            user_location: { type: 'approximate', country: 'IN' },
+          },
+        ],
+        ...(forced ? { tool_choice: 'required' as const } : {}),
+        // Supported by the API but missing from this SDK version's create params type.
+        ...({ max_tool_calls: maxSearches } as object),
+        include: ['web_search_call.action.sources'],
+        reasoning: { effort: 'low' },
+        max_output_tokens: 2500,
+        store: false,
+        stream: true,
+      },
+      { signal: ctrl.signal },
+    );
 
-  let upstream: Awaited<ReturnType<typeof request>>;
-  try {
-    upstream = await request(false);
-  } catch (err) {
-    return upstreamError(err);
-  }
+  // Groq answers for free when it is configured; OpenAI takes over when Groq is rate limited or down.
+  const attempt = async (forced: boolean, maxSearches: number, send: (obj: unknown) => void, links: ReturnType<typeof linkChecker>): Promise<Attempt> => {
+    if (groqConfigured()) {
+      try {
+        const messages = (forced ? retryInput : input) as { role: 'user' | 'assistant'; content: string }[];
+        const pass = await askGroq({ instructions: brief, messages, forced, signal: ctrl.signal });
+        const domains = [...new Set(pass.searchUrls.map(displayDomain))].slice(0, 4);
+        if (domains.length) send({ t: 'status', stage: 'reading', domains });
+        send({ t: 'status', stage: 'writing' });
+        return { ...pass, usage: undefined, model: GROQ_MODEL, free: true };
+      } catch (err) {
+        if (!process.env.OPENAI_API_KEY || !retryableUpstream(err)) throw err;
+        console.warn('groq failed, trying openai', (err as { status?: number })?.status);
+      }
+    }
+    return { ...(await runPass(await openaiRequest(forced, maxSearches), send, links)), model: TEXT_MODEL, free: false };
+  };
 
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -208,10 +225,12 @@ export async function POST(req: Request) {
         return { ...done, kind: 'answer', text: body, sources, related: [], portals: officialPortals(question, body) };
       };
 
+      let model = TEXT_MODEL;
       try {
-        let pass = await runPass(upstream, send, links);
+        let pass = await attempt(false, MAX_SEARCHES, send, links);
+        model = pass.model;
         searches += pass.searches;
-        costUsd += estimateCost(pass.usage, pass.searches);
+        costUsd += pass.free ? 0 : estimateCost(pass.usage, pass.searches);
         logPass(1, pass);
         let done = await resolve(pass);
 
@@ -221,10 +240,10 @@ export async function POST(req: Request) {
           retried = true;
           send({ t: 'reset' });
           send({ t: 'status', stage: 'searching' });
-          upstream = await request(true, retryBudget);
-          pass = await runPass(upstream, send, links);
+          pass = await attempt(true, retryBudget, send, links);
+          model = pass.model;
           searches += pass.searches;
-          costUsd += estimateCost(pass.usage, pass.searches);
+          costUsd += pass.free ? 0 : estimateCost(pass.usage, pass.searches);
           logPass(2, pass);
           done = await resolve(pass);
         }
@@ -232,7 +251,7 @@ export async function POST(req: Request) {
         done ??= noSource(null, lang, question);
         done.quota = await quotaOrNull(req);
         costUsd = Math.round(costUsd * 10000) / 10000;
-        done.meta = { ms: Date.now() - started, costUsd, searches, model: TEXT_MODEL, checkedLinks, droppedLinks, retried, sourcesFrom };
+        done.meta = { ms: Date.now() - started, costUsd, searches, model, checkedLinks, droppedLinks, retried, sourcesFrom };
         done.sourcesFrom = sourcesFrom;
         if (done.kind === 'answer' && key) {
           answerCache.set(key, { text: done.text, sources: done.sources, lang, footer: done.footer, sourcesFrom });
@@ -240,20 +259,22 @@ export async function POST(req: Request) {
         console.log('ask', JSON.stringify({ kind: done.kind, lang, ms: done.meta.ms, costUsd, searches, sources: done.sources.length, sourcesFrom, retried, checkedLinks, droppedLinks }));
         send(done);
       } catch (err) {
-        console.error('ask stream failed', (err as Error)?.message);
-        send({ t: 'error', error: 'Something went wrong while answering. Try again.' });
+        const status = (err as { status?: number })?.status;
+        console.error('ask stream failed', status, (err as Error)?.message);
+        send({ t: 'error', error: status === 429 ? 'Ask India is busy right now. Try again in a minute.' : 'Something went wrong while answering. Try again.' });
       } finally {
         controller.close();
       }
     },
     cancel() {
-      upstream.controller.abort();
+      ctrl.abort();
     },
   });
 
   return new Response(body, { headers: STREAM_HEADERS });
 }
 
+type Attempt = Pass & { model: string; free: boolean };
 type Pass = { text: string; annotations: Annotation[]; usage: Parameters<typeof estimateCost>[0]; searches: number; searchUrls: string[]; rawSources: number };
 
 /** Streams one model run to the browser. Text is held back until the first official citation arrives. */
