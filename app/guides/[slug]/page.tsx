@@ -71,7 +71,7 @@ export default async function GuidePage({ params }: Props) {
           </li>
         </ol>
       </nav>
-      <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight sm:text-5xl">{guide.title}</h1>
+      <h1 className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl">{guide.title}</h1>
       <p className="mt-4 text-lg text-ink">{guide.summary}</p>
       <p className="mt-3 text-sm text-ink-soft">
         Last checked: <time dateTime={LAST_CHECKED_ISO}>{LAST_CHECKED_LABEL}</time>. Rules and fees change. Confirm every detail on the official
@@ -79,7 +79,7 @@ export default async function GuidePage({ params }: Props) {
       </p>
 
       <section aria-labelledby="needs" className="mt-8 rounded-3xl border border-line bg-card p-5 shadow-card sm:p-6">
-        <h2 id="needs" className="font-display text-xl font-semibold tracking-tight">
+        <h2 id="needs" className="text-xl font-bold tracking-tight">
           What you need
         </h2>
         <ul className="mt-3 list-disc space-y-1.5 pl-5 text-ink marker:text-brand">
@@ -91,7 +91,7 @@ export default async function GuidePage({ params }: Props) {
 
       {guide.sections.map((sec, si) => (
         <section key={sec.heading} className="mt-10">
-          <h2 className="font-display text-2xl font-semibold tracking-tight">{sec.heading}</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{sec.heading}</h2>
           <ol className="mt-4 space-y-3" start={offsets[si] + 1}>
             {sec.steps.map((step, i) => (
               <li key={step} className="flex gap-3">
@@ -107,7 +107,7 @@ export default async function GuidePage({ params }: Props) {
 
       {guide.documents && (
         <section aria-labelledby="docs" className="mt-10">
-          <h2 id="docs" className="font-display text-2xl font-semibold tracking-tight">
+          <h2 id="docs" className="text-2xl font-bold tracking-tight">
             Documents
           </h2>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-ink marker:text-brand">
@@ -119,7 +119,7 @@ export default async function GuidePage({ params }: Props) {
       )}
 
       <section aria-labelledby="notes" className="mt-10">
-        <h2 id="notes" className="font-display text-2xl font-semibold tracking-tight">
+        <h2 id="notes" className="text-2xl font-bold tracking-tight">
           Good to know
         </h2>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-ink-soft marker:text-brand">

@@ -40,10 +40,10 @@ export default function AboutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 pt-10 sm:px-6 sm:pt-14">
       <JsonLd data={jsonLd} />
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
+      <p className="text-sm font-semibold text-ink-soft">
         About · <span lang="hi">परिचय</span>
       </p>
-      <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight sm:text-5xl">A front door, not the office</h1>
+      <h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">A front door, not the office</h1>
       <p className="mt-4 text-lg text-ink-soft">
         Ask India is an independent project. You ask how to do something with the government, like getting a PAN, updating your Aadhaar
         address or filing a grievance, and it gives you a short answer with steps, the documents needed, fees when the official page lists
@@ -68,7 +68,7 @@ export default function AboutPage() {
       </section>
 
       <section aria-labelledby="how" className="mt-12">
-        <h2 id="how" className="font-display text-2xl font-semibold tracking-tight">
+        <h2 id="how" className="text-2xl font-bold tracking-tight">
           How it works
         </h2>
         <ol className="mt-5 space-y-4">
@@ -85,7 +85,7 @@ export default function AboutPage() {
       </section>
 
       <section aria-labelledby="privacy" className="mt-12">
-        <h2 id="privacy" className="font-display text-2xl font-semibold tracking-tight">
+        <h2 id="privacy" className="text-2xl font-bold tracking-tight">
           Privacy
         </h2>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-ink-soft marker:text-brand">
@@ -99,7 +99,7 @@ export default function AboutPage() {
       </section>
 
       <section aria-labelledby="neutral" className="mt-12">
-        <h2 id="neutral" className="font-display text-2xl font-semibold tracking-tight">
+        <h2 id="neutral" className="text-2xl font-bold tracking-tight">
           Neutrality
         </h2>
         <p className="mt-3 text-ink-soft">
@@ -110,7 +110,7 @@ export default function AboutPage() {
       </section>
 
       <section aria-labelledby="limits" className="mt-12">
-        <h2 id="limits" className="font-display text-2xl font-semibold tracking-tight">
+        <h2 id="limits" className="text-2xl font-bold tracking-tight">
           Limits
         </h2>
         <p className="mt-3 text-ink-soft">

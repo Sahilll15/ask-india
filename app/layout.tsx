@@ -1,20 +1,24 @@
 import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
-import { Fraunces, Mukta } from 'next/font/google';
+import { Geist, Noto_Sans_Devanagari } from 'next/font/google';
 import { Header } from './components/Header.tsx';
+import { LogoMark } from './components/Icons.tsx';
 import { JsonLd } from './components/JsonLd.tsx';
 import { PERSON_ID, SITE_URL, WEBSITE_ID } from './lib/seo.ts';
 import './globals.css';
 
-// All four weights are used (normal, medium, semibold, bold). Devanagari still loads on demand via
-// unicode-range; only the latin files are preloaded for the first paint.
-const mukta = Mukta({
+// Geist has no Devanagari glyphs, so Hindi text falls back to Noto per character.
+const geist = Geist({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
   display: 'swap',
-  variable: '--font-mukta',
+  variable: '--font-geist',
 });
-const fraunces = Fraunces({ subsets: ['latin'], display: 'swap', variable: '--font-fraunces', axes: ['opsz'], preload: false });
+const deva = Noto_Sans_Devanagari({
+  subsets: ['devanagari'],
+  display: 'swap',
+  variable: '--font-deva',
+  preload: false,
+});
 
 const siteUrl = SITE_URL;
 const title = 'Ask India: answers from official government sites';
@@ -39,10 +43,23 @@ export const metadata: Metadata = {
     'पैन आधार लिंक',
   ],
   applicationName: 'Ask India',
+  appleWebApp: { capable: true, title: 'Ask India', statusBarStyle: 'default' },
   authors: [{ name: 'Sahil Chalke', url: 'https://sahilchalke.com' }],
   creator: 'Sahil Chalke',
-  openGraph: { type: 'website', siteName: 'Ask India', title, description, url: '/', locale: 'en_IN' },
-  twitter: { card: 'summary_large_image', creator: '@chalke1015', title, description },
+  openGraph: {
+    type: 'website',
+    siteName: 'Ask India',
+    title,
+    description,
+    url: '/',
+    locale: 'en_IN',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    creator: '@chalke1015',
+    title,
+    description,
+  },
   robots: { index: true, follow: true },
 };
 
@@ -87,52 +104,118 @@ const jsonLd = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f2e9df' },
-    { media: '(prefers-color-scheme: dark)', color: '#17110c' },
-  ],
+  themeColor: '#ffffff',
 };
 
-const themeScript = `try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}`;
+const themeScript = `try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark')t='light';document.documentElement.dataset.theme=t}catch(e){}`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en" className={`${mukta.variable} ${fraunces.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geist.variable} ${deva.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-dvh">
         <JsonLd data={jsonLd} />
-        <a href="#main" className="sr-only rounded bg-ink px-3 py-2 text-page focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50">
+        <a
+          href="#main"
+          className="sr-only rounded bg-ink px-3 py-2 text-page focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50"
+        >
           Skip to content
         </a>
         <Header />
         <main id="main">{children}</main>
-        <footer className="mt-16 border-t border-line">
-          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-ink-soft sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <p>
-              Not a government website. Not affiliated with the Government of India.{' '}
-              <Link href="/about" className="font-medium text-brand underline-offset-4 hover:underline">
-                Read the disclaimer
-              </Link>
-            </p>
-            <p className="flex flex-wrap gap-x-4 gap-y-1">
-              <a
-                href="https://github.com/Sahilll15/ask-india/issues/new"
-                className="font-medium text-brand underline-offset-4 hover:underline"
+        <footer className="border-t border-line bg-page-deep">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.6fr_1fr_1fr]">
+            <div>
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2"
+                aria-label="Ask India home"
               >
-                Report a mistake
-              </a>
-              <span>
+                <LogoMark className="size-7" />
+                <span className="text-[1.1rem] font-semibold tracking-[-0.02em] text-ink">
+                  Ask India
+                </span>
+              </Link>
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-soft">
+                Simple steps for government services in India, taken from
+                official websites.
+              </p>
+            </div>
+            <FooterColumn
+              title="Use"
+              links={[
+                ['/', 'Ask a question'],
+                ['/guides', 'Step-by-step guides'],
+                ['/directory', 'Official websites'],
+              ]}
+            />
+            <FooterColumn
+              title="About"
+              links={[
+                ['/about', 'How it works'],
+                ['/about', 'Disclaimer'],
+                [
+                  'https://github.com/Sahilll15/ask-india/issues/new',
+                  'Report a mistake',
+                ],
+              ]}
+            />
+          </div>
+          <div className="border-t border-line">
+            <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 text-sm text-ink-faint sm:flex-row sm:justify-between sm:px-6">
+              <p>
+                Not a government website. Not affiliated with the Government of
+                India.
+              </p>
+              <p>
                 Built by{' '}
-                <a href="https://sahilchalke.com" className="font-medium text-ink underline-offset-4 hover:underline">
+                <a
+                  href="https://sahilchalke.com"
+                  className="font-medium text-ink-soft hover:text-ink"
+                >
                   Sahil Chalke
                 </a>
-              </span>
-            </p>
+              </p>
+            </div>
           </div>
         </footer>
       </body>
     </html>
+  );
+}
+
+function FooterColumn({
+  title,
+  links,
+}: {
+  title: string;
+  links: [string, string][];
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-ink">{title}</p>
+      <ul className="mt-4 space-y-2.5 text-sm">
+        {links.map(([href, label]) => (
+          <li key={label}>
+            <Link
+              href={href}
+              className="text-ink-soft transition-colors hover:text-ink"
+            >
+              {label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
