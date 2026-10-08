@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { groqPass, retryableUpstream } from '../app/server/groq.ts';
+import { groqKeys, groqPass, retryAfterMs, retryableUpstream, withGroqKeys } from '../app/server/groq.ts';
 import { applyCitations } from '../app/lib/citations.ts';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/groq-aadhaar.json', import.meta.url), 'utf8'));
@@ -51,4 +51,84 @@ test('only rate limits, server errors and network failures fall back to OpenAI',
   assert.equal(retryableUpstream(new TypeError('fetch failed')), true);
   assert.equal(retryableUpstream({ status: 400 }), false);
   assert.equal(retryableUpstream({ status: 401 }), false);
+});
+
+const fakeErr = (status: number, message = '', headers: Record<string, string> = {}) => Object.assign(new Error(message), { status, headers });
+
+test('keys come from GROQ_API_KEY then GROQ_API_KEYS, deduped and in order', () => {
+  assert.deepEqual(groqKeys({ GROQ_API_KEY: 'a', GROQ_API_KEYS: ' b, a ,\nc,, ' }), ['a', 'b', 'c']);
+  assert.deepEqual(groqKeys({ GROQ_API_KEYS: 'x,y' }), ['x', 'y']);
+  assert.deepEqual(groqKeys({}), []);
+});
+
+test('a rate limited key is parked and the next key answers', async () => {
+  const cool = new Map<string, number>();
+  const used: string[] = [];
+  const answer = await withGroqKeys(
+    async (c: { key: string }) => {
+      used.push(c.key);
+      if (c.key === 'a') throw fakeErr(429, 'Please try again in 2m30s.');
+      return `ok from ${c.key}`;
+    },
+    { keys: ['a', 'b'], cool, now: () => 0, make: (key) => ({ key }) },
+  );
+  assert.equal(answer, 'ok from b');
+  assert.deepEqual(used, ['a', 'b']);
+  assert.equal(cool.get('a'), 150_000);
+});
+
+test('a parked key is skipped until its cooldown ends', async () => {
+  const cool = new Map([['a', 1_000]]);
+  const used: string[] = [];
+  const call = async (c: { key: string }) => (used.push(c.key), c.key);
+  await withGroqKeys(call, { keys: ['a', 'b'], cool, now: () => 500, make: (key) => ({ key }) });
+  await withGroqKeys(call, { keys: ['a', 'b'], cool, now: () => 2_000, make: (key) => ({ key }) });
+  assert.deepEqual(used, ['b', 'a']);
+});
+
+test('a rejected key is parked for an hour and the next key is tried', async () => {
+  const cool = new Map<string, number>();
+  const out = await withGroqKeys(
+    async (c: { key: string }) => {
+      if (c.key === 'bad') throw fakeErr(401, 'Invalid API Key');
+      return c.key;
+    },
+    { keys: ['bad', 'good'], cool, now: () => 0, make: (key) => ({ key }) },
+  );
+  assert.equal(out, 'good');
+  assert.equal(cool.get('bad'), 3_600_000);
+});
+
+test('when every key is limited the last error is retryable, so OpenAI can take over', async () => {
+  const err = await withGroqKeys(
+    async () => {
+      throw fakeErr(429);
+    },
+    { keys: ['a', 'b'], cool: new Map(), now: () => 0, make: (key) => ({ key }) },
+  ).catch((e) => e);
+  assert.equal(retryableUpstream(err), true);
+  const allParked = await withGroqKeys(async () => 'never', { keys: ['a'], cool: new Map([['a', 10]]), now: () => 0, make: (key) => ({ key }) }).catch(
+    (e) => e,
+  );
+  assert.equal(retryableUpstream(allParked), true);
+});
+
+test('a Groq outage is not retried on other keys', async () => {
+  const used: string[] = [];
+  const err = await withGroqKeys(
+    async (c: { key: string }) => {
+      used.push(c.key);
+      throw fakeErr(503);
+    },
+    { keys: ['a', 'b'], cool: new Map(), now: () => 0, make: (key) => ({ key }) },
+  ).catch((e) => e);
+  assert.equal(err.status, 503);
+  assert.deepEqual(used, ['a']);
+});
+
+test('retry-after comes from the header, then the message, then a one minute default', () => {
+  assert.equal(retryAfterMs(fakeErr(429, '', { 'retry-after': '12' })), 12_000);
+  assert.equal(retryAfterMs(fakeErr(429, 'Please try again in 6m6.768s.')), 366_768);
+  assert.equal(retryAfterMs(fakeErr(429, 'Please try again in 900ms.')), 900);
+  assert.equal(retryAfterMs(fakeErr(429)), 60_000);
 });
