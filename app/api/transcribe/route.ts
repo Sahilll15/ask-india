@@ -3,10 +3,14 @@ import { detectLang } from '../../lib/lang.ts';
 import { audioDurationSeconds } from '../../lib/audio-duration.ts';
 import { redact } from '../../lib/redact.ts';
 import { bad, readCapped, upstreamError } from '../../server/http.ts';
+import { groq, GROQ_TRANSCRIBE_MODEL, groqConfigured, retryableUpstream } from '../../server/groq.ts';
 import { openai, TRANSCRIBE_MODEL } from '../../server/openai.ts';
 import { LimiterUnavailable, check, limiterBusy, tooMany } from '../../server/ratelimit.ts';
 
 export const maxDuration = 60;
+
+const PROMPT =
+  'A question about Indian government services such as Aadhaar, PAN, passport, ITR, GST, Udyam, driving licence, PM-KISAN, Ayushman Bharat, DigiLocker, CPGRAMS. May be in English, Hindi or Hinglish.';
 
 // 30 seconds of opus or AAC is well under this; anything bigger is not a 30 second clip.
 const MAX_AUDIO = 1_000_000;
@@ -35,12 +39,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    const file = await toFile(read.bytes, `question.${ext}`, { type });
-    const res = await openai().audio.transcriptions.create({
-      model: TRANSCRIBE_MODEL,
-      file,
-      prompt: 'A question about Indian government services such as Aadhaar, PAN, passport, ITR, GST, Udyam, driving licence, PM-KISAN, Ayushman Bharat, DigiLocker, CPGRAMS. May be in English, Hindi or Hinglish.',
-    });
+    const transcribe = async (useGroq: boolean) =>
+      (useGroq ? groq() : openai()).audio.transcriptions.create({
+        model: useGroq ? GROQ_TRANSCRIBE_MODEL : TRANSCRIBE_MODEL,
+        file: await toFile(read.bytes, `question.${ext}`, { type }),
+        prompt: PROMPT,
+      });
+    let res;
+    try {
+      res = await transcribe(groqConfigured());
+    } catch (err) {
+      if (!groqConfigured() || !process.env.OPENAI_API_KEY || !retryableUpstream(err)) throw err;
+      res = await transcribe(false);
+    }
     const { text, removed } = redact(res.text.trim().slice(0, 500));
     return Response.json({ text, removed, lang: detectLang(text) });
   } catch (err) {

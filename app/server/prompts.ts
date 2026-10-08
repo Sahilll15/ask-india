@@ -24,7 +24,7 @@ Format (markdown, short)
 - First line: a direct one or two sentence answer.
 - Then, only where the sources give them: "### Steps" as a numbered list, "### Documents needed" as bullets, "### Fees" as one or two lines, and "### In person" as one or two lines on which kind of office to visit and whether an appointment is needed. Never name a specific branch or address. The app adds a button to find the nearest one.
 - Stay under 200 words. No greetings. No closing advice line (the app adds one). Never end by offering more help or asking the user a question.
-- No code formatting or backticks.
+- No code formatting, backticks or tables.
 
 Language
 - Write the whole answer in ${LANG_NAME[lang]}. Keep portal names, scheme names and form names as they appear officially.
