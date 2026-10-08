@@ -129,6 +129,7 @@ test('a Groq outage is not retried on other keys', async () => {
 test('retry-after comes from the header, then the message, then a one minute default', () => {
   assert.equal(retryAfterMs(fakeErr(429, '', { 'retry-after': '12' })), 12_000);
   assert.equal(retryAfterMs(fakeErr(429, 'Please try again in 6m6.768s.')), 366_768);
-  assert.equal(retryAfterMs(fakeErr(429, 'Please try again in 900ms.')), 900);
+  assert.equal(retryAfterMs(fakeErr(429, 'Please try again in 900ms.')), 1_000);
+  assert.equal(retryAfterMs(fakeErr(429, '', { 'retry-after': '99999999' })), 86_400_000);
   assert.equal(retryAfterMs(fakeErr(429)), 60_000);
 });

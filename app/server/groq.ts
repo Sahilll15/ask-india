@@ -26,8 +26,12 @@ function groqClient(key: string) {
   return c;
 }
 
-/** How long Groq asked us to wait: the retry-after header, else the "try again in 6m6.7s" text, else a minute. */
+/** How long Groq asked us to wait (header, else the "try again in 6m6.7s" text, else a minute), kept between 1s and a day. */
 export function retryAfterMs(err: unknown) {
+  return Math.min(Math.max(rawRetryAfterMs(err), 1_000), 86_400_000);
+}
+
+function rawRetryAfterMs(err: unknown) {
   const headers = (err as { headers?: Headers | Record<string, string> })?.headers;
   const header = headers instanceof Headers ? headers.get('retry-after') : headers?.['retry-after'];
   if (header && Number.isFinite(Number(header))) return Number(header) * 1000;
