@@ -3,7 +3,7 @@ import { detectLang } from '../../lib/lang.ts';
 import { audioDurationSeconds } from '../../lib/audio-duration.ts';
 import { redact } from '../../lib/redact.ts';
 import { bad, readCapped, upstreamError } from '../../server/http.ts';
-import { groq, GROQ_TRANSCRIBE_MODEL, groqConfigured, retryableUpstream } from '../../server/groq.ts';
+import { GROQ_TRANSCRIBE_MODEL, groqConfigured, retryableUpstream, withGroqKeys } from '../../server/groq.ts';
 import { openai, TRANSCRIBE_MODEL } from '../../server/openai.ts';
 import { LimiterUnavailable, check, limiterBusy, tooMany } from '../../server/ratelimit.ts';
 
@@ -39,12 +39,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const transcribe = async (useGroq: boolean) =>
-      (useGroq ? groq() : openai()).audio.transcriptions.create({
-        model: useGroq ? GROQ_TRANSCRIBE_MODEL : TRANSCRIBE_MODEL,
-        file: await toFile(read.bytes, `question.${ext}`, { type }),
-        prompt: PROMPT,
-      });
+    const transcribe = async (useGroq: boolean) => {
+      const run = async (client: ReturnType<typeof openai>, model: string) =>
+        client.audio.transcriptions.create({ model, file: await toFile(read.bytes, `question.${ext}`, { type }), prompt: PROMPT });
+      return useGroq ? withGroqKeys((client) => run(client, GROQ_TRANSCRIBE_MODEL)) : run(openai(), TRANSCRIBE_MODEL);
+    };
     let res;
     try {
       res = await transcribe(groqConfigured());
